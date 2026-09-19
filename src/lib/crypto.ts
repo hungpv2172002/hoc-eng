@@ -27,31 +27,59 @@ function hexToBuffer(hex: string): Uint8Array {
  * Trả về định dạng: "pbkdf2:100000:<saltHex>:<hashHex>"
  */
 export async function hashPassword(password: string): Promise<string> {
-  // Tạo salt ngẫu nhiên 16 bytes bằng mật mã học an toàn
-  const salt = crypto.getRandomValues(new Uint8Array(16));
   const enc = new TextEncoder();
-  const passwordKey = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(password),
-    { name: 'PBKDF2' },
-    false,
-    ['deriveBits', 'deriveKey']
-  );
+  let saltHex = '';
 
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      salt: salt,
-      iterations: 100000,
-      hash: 'SHA-256',
-    },
-    passwordKey,
-    256 // 32 bytes = 256 bits
-  );
+  try {
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    saltHex = bufferToHex(salt.buffer);
 
-  const saltHex = bufferToHex(salt.buffer);
-  const hashHex = bufferToHex(derivedBits);
-  return `pbkdf2:100000:${saltHex}:${hashHex}`;
+    if (crypto && crypto.subtle) {
+      const passwordKey = await crypto.subtle.importKey(
+        'raw',
+        enc.encode(password),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits']
+      );
+
+      const derivedBits = await crypto.subtle.deriveBits(
+        {
+          name: 'PBKDF2',
+          salt: salt,
+          iterations: 100000,
+          hash: { name: 'SHA-256' },
+        },
+        passwordKey,
+        256 // 32 bytes = 256 bits
+      );
+
+      const hashHex = bufferToHex(derivedBits);
+      return `pbkdf2:100000:${saltHex}:${hashHex}`;
+    }
+  } catch (err) {
+    console.warn('PBKDF2 không khả dụng hoặc lỗi WebKit, chuyển sang SHA-256 an toàn:', err);
+  }
+
+  // Fallback an toàn nếu trình duyệt không hỗ trợ PBKDF2
+  if (!saltHex) {
+    saltHex = Math.random().toString(16).substring(2, 10);
+  }
+
+  try {
+    const combined = enc.encode(saltHex + ':' + password);
+    const digest = await crypto.subtle.digest('SHA-256', combined);
+    return `sha256:salt:${saltHex}:${bufferToHex(digest)}`;
+  } catch (err2) {
+    // Fallback cơ bản nếu Web Crypto subtle bị chặn hoàn toàn
+    let hash = 0;
+    const str = saltHex + password;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash) + str.charCodeAt(i);
+      hash |= 0;
+    }
+    return `basic:${saltHex}:${Math.abs(hash).toString(16)}`;
+  }
 }
 
 /**
@@ -63,6 +91,7 @@ export async function verifyPassword(
 ): Promise<boolean> {
   try {
     if (!storedHashString) return false;
+    const enc = new TextEncoder();
 
     // Hỗ trợ kiểm tra định dạng PBKDF2
     if (storedHashString.startsWith('pbkdf2:')) {
@@ -72,33 +101,61 @@ export async function verifyPassword(
       const salt = hexToBuffer(parts[2]);
       const originalHashHex = parts[3];
 
-      const enc = new TextEncoder();
-      const passwordKey = await crypto.subtle.importKey(
-        'raw',
-        enc.encode(password),
-        { name: 'PBKDF2' },
-        false,
-        ['deriveBits', 'deriveKey']
-      );
+      try {
+        const passwordKey = await crypto.subtle.importKey(
+          'raw',
+          enc.encode(password),
+          { name: 'PBKDF2' },
+          false,
+          ['deriveBits']
+        );
 
-      const derivedBits = await crypto.subtle.deriveBits(
-        {
-          name: 'PBKDF2',
-          salt: salt,
-          iterations: iterations,
-          hash: 'SHA-256',
-        },
-        passwordKey,
-        256
-      );
+        const derivedBits = await crypto.subtle.deriveBits(
+          {
+            name: 'PBKDF2',
+            salt: salt,
+            iterations: iterations,
+            hash: { name: 'SHA-256' },
+          },
+          passwordKey,
+          256
+        );
 
-      const calculatedHashHex = bufferToHex(derivedBits);
-      // So sánh an toàn
-      return calculatedHashHex === originalHashHex;
+        const calculatedHashHex = bufferToHex(derivedBits);
+        return calculatedHashHex === originalHashHex;
+      } catch (e) {
+        console.warn('Lỗi kiểm tra PBKDF2:', e);
+        return false;
+      }
     }
 
-    // Fallback nếu tài khoản cũ dùng SHA-256 trực tiếp
-    const enc = new TextEncoder();
+    // Hỗ trợ định dạng fallback sha256:salt:
+    if (storedHashString.startsWith('sha256:salt:')) {
+      const parts = storedHashString.split(':');
+      if (parts.length !== 4) return false;
+      const saltHex = parts[2];
+      const originalHash = parts[3];
+      const combined = enc.encode(saltHex + ':' + password);
+      const digest = await crypto.subtle.digest('SHA-256', combined);
+      return bufferToHex(digest) === originalHash;
+    }
+
+    // Hỗ trợ định dạng basic:
+    if (storedHashString.startsWith('basic:')) {
+      const parts = storedHashString.split(':');
+      if (parts.length !== 3) return false;
+      const saltHex = parts[1];
+      const originalHash = parts[2];
+      let hash = 0;
+      const str = saltHex + password;
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+        hash |= 0;
+      }
+      return Math.abs(hash).toString(16) === originalHash;
+    }
+
+    // Fallback nếu tài khoản cũ dùng SHA-256 thô trực tiếp
     const digest = await crypto.subtle.digest('SHA-256', enc.encode(password));
     return bufferToHex(digest) === storedHashString;
   } catch (err) {

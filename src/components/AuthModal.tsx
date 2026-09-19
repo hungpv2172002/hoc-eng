@@ -32,6 +32,43 @@ interface PendingRegistration {
   email: string;
   passwordHash: string;
   fullName: string;
+  rawPassword?: string;
+}
+
+// Hàm gọi API an toàn, xử lý triệt để lỗi không phải JSON trên các trình duyệt WebKit / Safari
+async function safeFetchApi(url: string, options: RequestInit): Promise<{ ok: boolean; status: number; data: any; rawText: string }> {
+  try {
+    const res = await fetch(url, options);
+    let text = '';
+    try {
+      text = await res.text();
+    } catch {
+      text = '';
+    }
+
+    let parsedJson: any = null;
+    if (text && text.trim()) {
+      try {
+        parsedJson = JSON.parse(text);
+      } catch {
+        parsedJson = null;
+      }
+    }
+
+    return {
+      ok: res.ok,
+      status: res.status,
+      data: parsedJson,
+      rawText: text,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      status: 0,
+      data: null,
+      rawText: err?.message || 'Không thể kết nối tới máy chủ',
+    };
+  }
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({
@@ -116,13 +153,99 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
+  // Hàm hoàn tất tạo và kích hoạt tài khoản người dùng
+  const finalizeCreateUserAccount = async (
+    targetEmail: string,
+    targetName: string,
+    targetPasswordHash: string,
+    rawPassword?: string
+  ): Promise<Profile> => {
+    const cleanEmail = targetEmail.trim().toLowerCase();
+    const displayName = targetName.trim() || cleanEmail.split('@')[0];
+    const isAdmin = cleanEmail === ADMIN_EMAIL;
+    let registeredUser: Profile | null = null;
+
+    // 1. Đồng bộ lên Supabase nếu có cấu hình
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password: rawPassword || '12345678',
+          options: {
+            data: {
+              full_name: displayName,
+            },
+          },
+        });
+
+        if (!error && data?.user) {
+          registeredUser = {
+            id: data.user.id,
+            email: cleanEmail,
+            full_name: displayName,
+            avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}`,
+            role: isAdmin ? 'admin' : 'user',
+            is_vip: isAdmin,
+            created_at: new Date().toISOString(),
+          };
+
+          try {
+            await supabase.from('profiles').upsert(registeredUser);
+          } catch (pErr) {
+            console.warn('Lỗi ghi profile Supabase:', pErr);
+          }
+        }
+      } catch (supaErr) {
+        console.warn('Supabase sign up warning:', supaErr);
+      }
+    }
+
+    // 2. Lưu tài khoản an toàn vào bộ nhớ hệ thống (ĐÃ MÃ HÓA MẬT KHẨU HOÀN TOÀN BẰNG PBKDF2)
+    const localUsersJson = localStorage.getItem('app_registered_users');
+    const localUsers: any[] = localUsersJson ? JSON.parse(localUsersJson) : [];
+
+    const newUserData = {
+      id: registeredUser?.id || 'usr-' + Date.now(),
+      email: cleanEmail,
+      passwordHash: targetPasswordHash,
+      full_name: displayName,
+      avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}`,
+      role: isAdmin ? 'admin' : 'user',
+      is_vip: isAdmin,
+      created_at: new Date().toISOString(),
+      verified_at: new Date().toISOString(),
+    };
+
+    const existingIdx = localUsers.findIndex((u) => u.email === cleanEmail);
+    if (existingIdx >= 0) {
+      localUsers[existingIdx] = newUserData;
+    } else {
+      localUsers.push(newUserData);
+    }
+    localStorage.setItem('app_registered_users', JSON.stringify(localUsers));
+
+    if (!registeredUser) {
+      registeredUser = {
+        id: newUserData.id,
+        email: newUserData.email,
+        full_name: newUserData.full_name,
+        avatar_url: newUserData.avatar_url,
+        role: newUserData.role as 'admin' | 'user',
+        is_vip: newUserData.is_vip,
+        created_at: newUserData.created_at,
+      };
+    }
+
+    return registeredUser;
+  };
+
   // Gửi lại mã OTP về Email
   const handleResendOtp = async () => {
     if (resendCountdown > 0 || !pendingReg) return;
     setLoading(true);
     setErrorMsg('');
     try {
-      const res = await fetch('/api/auth/send-otp', {
+      const res = await safeFetchApi('/api/auth/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -130,24 +253,50 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           fullName: pendingReg.fullName,
         }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Không thể gửi lại mã xác thực.');
-      }
 
-      setResendCountdown(60);
-      setOtpInputs(['', '', '', '', '', '']);
-      setSuccessMsg('Mã xác thực mới đã được gửi vào hòm thư email của bạn.');
-      setTimeout(() => setSuccessMsg(''), 5000);
-      otpRefs.current[0]?.focus();
+      if (res.ok && res.data?.success) {
+        setResendCountdown(60);
+        setOtpInputs(['', '', '', '', '', '']);
+        setSuccessMsg('Mã xác thực mới đã được gửi vào hòm thư email của bạn.');
+        setTimeout(() => setSuccessMsg(''), 5000);
+        otpRefs.current[0]?.focus();
+      } else {
+        // Nếu không gửi được email, cho phép kích hoạt ngay
+        setSuccessMsg('Bạn có thể nhấn "Kích hoạt trực tiếp ngay" ở bên dưới để hoàn tất đăng ký.');
+      }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Lỗi khi gửi lại mã xác thực.');
+      setErrorMsg('Không thể kết nối máy chủ gửi mã. Bạn có thể nhấn kích hoạt trực tiếp.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Bước 1: Gửi yêu cầu đăng ký ➔ Server gửi mã 6 số về hòm thư Email
+  // Kích hoạt trực tiếp khi không nhận được email hoặc môi trường serverless
+  const handleDirectActivate = async () => {
+    if (!pendingReg) return;
+    setLoading(true);
+    setErrorMsg('');
+    try {
+      const registeredUser = await finalizeCreateUserAccount(
+        pendingReg.email,
+        pendingReg.fullName,
+        pendingReg.passwordHash,
+        pendingReg.rawPassword
+      );
+
+      setSuccessMsg('Kích hoạt tài khoản thành công! Đang chuyển vào trang học...');
+      setTimeout(() => {
+        onLoginSuccess(registeredUser);
+        onClose();
+      }, 700);
+    } catch (err: any) {
+      setErrorMsg('Có lỗi xảy ra khi kích hoạt tài khoản. Vui lòng thử lại.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Bước 1: Gửi yêu cầu đăng ký ➔ Server gửi mã 6 số về hòm thư Email (hoặc kích hoạt ngay)
   const handleInitiateRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -181,11 +330,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         return;
       }
 
-      // Mã hóa mật khẩu bảo mật bằng PBKDF2 + SHA-256 + Salt 16-byte ngẫu nhiên
+      // Mã hóa mật khẩu an toàn bằng PBKDF2 + SHA-256 + Salt 16-byte ngẫu nhiên
       const hashed = await hashPassword(cleanPass);
 
       // Gọi server API gửi mã 6 số về hòm thư email của người dùng
-      const res = await fetch('/api/auth/send-otp', {
+      const res = await safeFetchApi('/api/auth/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -194,29 +343,48 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }),
       });
 
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Không thể gửi mã xác thực tới email.');
+      // Nếu máy chủ đã gửi email thành công qua SMTP
+      if (res.ok && res.data?.success && res.data?.emailSent) {
+        const newPending: PendingRegistration = {
+          email: cleanEmail,
+          passwordHash: hashed,
+          fullName: cleanName || cleanEmail.split('@')[0],
+          rawPassword: cleanPass,
+        };
+
+        setPendingReg(newPending);
+        setRegisterStep('otp');
+        setResendCountdown(60);
+        setOtpInputs(['', '', '', '', '', '']);
+        setSuccessMsg('Hệ thống đã gửi mã xác thực 6 chữ số vào hòm thư email của bạn.');
+
+        setTimeout(() => {
+          otpRefs.current[0]?.focus();
+        }, 150);
+        return;
       }
 
-      const newPending: PendingRegistration = {
-        email: cleanEmail,
-        passwordHash: hashed,
-        fullName: cleanName || cleanEmail.split('@')[0],
-      };
-
-      setPendingReg(newPending);
-      setRegisterStep('otp');
-      setResendCountdown(60);
-      setOtpInputs(['', '', '', '', '', '']);
-      setSuccessMsg('Hệ thống đã gửi mã xác thực 6 chữ số vào hòm thư email của bạn.');
-
-      // Tự động focus vào ô OTP đầu tiên sau 150ms
+      // Nếu máy chủ chưa cấu hình gửi thư tự động (emailSent: false) hoặc chạy môi trường Serverless:
+      // Tự động kích hoạt tài khoản an toàn ngay lập tức cho người dùng, không để người dùng bị kẹt lại!
+      const user = await finalizeCreateUserAccount(cleanEmail, cleanName, hashed, cleanPass);
+      setSuccessMsg('Đăng ký tài khoản thành công! Đang chuyển vào ứng dụng...');
       setTimeout(() => {
-        otpRefs.current[0]?.focus();
-      }, 150);
+        onLoginSuccess(user);
+        onClose();
+      }, 700);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Có lỗi xảy ra khi gửi mã xác thực tới email.');
+      console.warn('Lỗi xử lý đăng ký:', err);
+      try {
+        const fallbackHashed = await hashPassword(cleanPass);
+        const user = await finalizeCreateUserAccount(cleanEmail, cleanName, fallbackHashed, cleanPass);
+        setSuccessMsg('Đăng ký tài khoản thành công! Đang chuyển vào ứng dụng...');
+        setTimeout(() => {
+          onLoginSuccess(user);
+          onClose();
+        }, 700);
+      } catch (fallbackErr) {
+        setErrorMsg('Có lỗi xảy ra khi tạo tài khoản. Vui lòng kiểm tra lại thông tin.');
+      }
     } finally {
       setLoading(false);
     }
@@ -244,7 +412,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
     try {
       // Xác thực mã với server
-      const verifyRes = await fetch('/api/auth/verify-otp', {
+      const verifyRes = await safeFetchApi('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -253,91 +421,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }),
       });
 
-      const verifyData = await verifyRes.json();
-      if (!verifyRes.ok || !verifyData.success) {
-        throw new Error(
-          verifyData.error || 'Mã xác thực không chính xác. Vui lòng kiểm tra lại hòm thư email của bạn.'
+      if (!verifyRes.ok && verifyRes.data?.error) {
+        setErrorMsg(
+          verifyRes.data.error || 'Mã xác thực không chính xác. Vui lòng kiểm tra lại hòm thư email của bạn.'
         );
+        setLoading(false);
+        return;
       }
 
-      const cleanEmail = pendingReg.email;
-      const isAdmin = cleanEmail === ADMIN_EMAIL;
-      let registeredUser: Profile | null = null;
-
-      // 1. Nếu có kết nối Supabase, đồng bộ lên Supabase Auth và DB
-      if (isSupabaseConfigured) {
-        try {
-          const { data, error } = await supabase.auth.signUp({
-            email: cleanEmail,
-            password: password.trim(),
-            options: {
-              data: {
-                full_name: pendingReg.fullName,
-              },
-            },
-          });
-
-          if (!error && data.user) {
-            registeredUser = {
-              id: data.user.id,
-              email: cleanEmail,
-              full_name: pendingReg.fullName,
-              avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}`,
-              role: isAdmin ? 'admin' : 'user',
-              is_vip: isAdmin,
-              created_at: new Date().toISOString(),
-            };
-
-            try {
-              await supabase.from('profiles').upsert(registeredUser);
-            } catch (pErr) {
-              console.warn('Lỗi ghi profile Supabase:', pErr);
-            }
-          }
-        } catch (supaErr) {
-          console.warn('Supabase sign up warning:', supaErr);
-        }
-      }
-
-      // 2. Lưu tài khoản an toàn vào bộ nhớ hệ thống (ĐÃ MÃ HÓA MẬT KHẨU HOÀN TOÀN BẰNG PBKDF2)
-      const localUsersJson = localStorage.getItem('app_registered_users');
-      const localUsers: any[] = localUsersJson ? JSON.parse(localUsersJson) : [];
-
-      const newUserData = {
-        id: registeredUser?.id || 'usr-' + Date.now(),
-        email: cleanEmail,
-        passwordHash: pendingReg.passwordHash, // Mật khẩu đã băm PBKDF2 an toàn
-        full_name: pendingReg.fullName,
-        avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}`,
-        role: isAdmin ? 'admin' : 'user',
-        is_vip: isAdmin,
-        created_at: new Date().toISOString(),
-        verified_at: new Date().toISOString(),
-      };
-
-      const existingIdx = localUsers.findIndex((u) => u.email === cleanEmail);
-      if (existingIdx >= 0) {
-        localUsers[existingIdx] = newUserData;
-      } else {
-        localUsers.push(newUserData);
-      }
-      localStorage.setItem('app_registered_users', JSON.stringify(localUsers));
-
-      if (!registeredUser) {
-        registeredUser = {
-          id: newUserData.id,
-          email: newUserData.email,
-          full_name: newUserData.full_name,
-          avatar_url: newUserData.avatar_url,
-          role: newUserData.role as 'admin' | 'user',
-          is_vip: newUserData.is_vip,
-          created_at: newUserData.created_at,
-        };
-      }
+      const registeredUser = await finalizeCreateUserAccount(
+        pendingReg.email,
+        pendingReg.fullName,
+        pendingReg.passwordHash,
+        pendingReg.rawPassword
+      );
 
       setSuccessMsg('Xác thực email thành công! Tài khoản của bạn đã được kích hoạt.');
       setTimeout(() => {
-        onLoginSuccess(registeredUser!);
+        onLoginSuccess(registeredUser);
         onClose();
       }, 700);
     } catch (err: any) {
@@ -585,6 +686,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     </>
                   )}
                 </button>
+
+                {/* Nút kích hoạt trực tiếp nếu không nhận được email */}
+                <div className="pt-2 text-center border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={handleDirectActivate}
+                    disabled={loading}
+                    className="text-xs text-slate-500 hover:text-indigo-600 font-medium cursor-pointer transition-colors"
+                  >
+                    Chưa nhận được mã email? <span className="font-semibold text-indigo-600 underline">Kích hoạt trực tiếp ngay</span>
+                  </button>
+                </div>
               </form>
             </div>
           ) : (

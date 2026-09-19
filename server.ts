@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { GoogleGenAI, Type } from '@google/genai';
@@ -11,13 +10,26 @@ import { INITIAL_QUESTIONS } from './src/data/initialQuestions';
 
 dotenv.config();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+
+// Cho phép CORS và hỗ trợ cả URL có tiền tố /api và không có tiền tố /api (đặc thù khi Vercel rewrite)
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+
+  // Nếu chạy trên serverless và đường dẫn thiếu /api (do rewrite)
+  if (!req.url.startsWith('/api') && !req.url.startsWith('/index.html') && req.url !== '/') {
+    req.url = '/api' + (req.url.startsWith('/') ? '' : '/') + req.url;
+  }
+  next();
+});
 
 // Khởi tạo Gemini AI server-side
 const ai = new GoogleGenAI({
@@ -113,8 +125,7 @@ function getDailyRotatedQuestions(allQuestions: any[], dateStr?: string): any[] 
 }
 
 // Health check endpoint
-
-app.get('/api/health', (req, res) => {
+app.get(['/api/health', '/health'], (req, res) => {
   res.json({
     status: 'ok',
     hasGeminiKey: !!process.env.GEMINI_API_KEY,
@@ -123,7 +134,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Endpoint /api/cron/generate theo yêu cầu của dự án
-app.all('/api/cron/generate', async (req, res) => {
+app.all(['/api/cron/generate', '/cron/generate'], async (req, res) => {
   try {
     const expectedSecret = process.env.CRON_SECRET || 'my_super_secret_cron_token_12345';
     const allowedSecrets = new Set([
@@ -378,7 +389,7 @@ Mỗi câu bài tập gồm:
 
 // Endpoint lấy danh sách câu hỏi phục vụ học viên
 // Hỗ trợ tự động đảo câu theo ngày (daily rotation), mỗi ngày một danh sách câu mới mẻ
-app.get('/api/questions', async (req, res) => {
+app.get(['/api/questions', '/questions'], async (req, res) => {
   const queryDate = (req.query.date as string) || new Date().toISOString().split('T')[0];
   const mode = (req.query.mode as string) || 'daily'; // 'daily' hoặc 'raw'
 
@@ -437,7 +448,7 @@ app.get('/api/questions', async (req, res) => {
 });
 
 // Endpoint lấy cài đặt thương hiệu ứng dụng (Tên, Biểu tượng)
-app.get('/api/settings', (req, res) => {
+app.get(['/api/settings', '/settings'], (req, res) => {
   return res.json({
     success: true,
     settings: appSettings,
@@ -445,7 +456,7 @@ app.get('/api/settings', (req, res) => {
 });
 
 // Endpoint cập nhật cài đặt ứng dụng từ trang Admin
-app.post('/api/settings', (req, res) => {
+app.post(['/api/settings', '/settings'], (req, res) => {
   try {
     const {
       appName,
@@ -574,7 +585,7 @@ function createMailTransporter() {
 }
 
 // Endpoint gửi mã xác thực 6 chữ số đến hộp thư Email của người dùng
-app.post('/api/auth/send-otp', async (req, res) => {
+app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
   try {
     const { email, fullName } = req.body || {};
     const cleanEmail = (email || '').trim().toLowerCase();
@@ -662,7 +673,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
 });
 
 // Endpoint xác thực mã 6 số từ người dùng
-app.post('/api/auth/verify-otp', (req, res) => {
+app.post(['/api/auth/verify-otp', '/auth/verify-otp'], (req, res) => {
   try {
     const { email, otp } = req.body || {};
     const cleanEmail = (email || '').trim().toLowerCase();
