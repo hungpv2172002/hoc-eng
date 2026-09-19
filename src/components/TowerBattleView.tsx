@@ -8,15 +8,16 @@ import {
   Sparkles,
   Zap,
   Volume2,
-  RefreshCw,
   Trophy,
   ArrowLeft,
   CheckCircle2,
-  AlertTriangle,
   RotateCcw,
   Coins,
   ChevronRight,
   HelpCircle,
+  Delete,
+  X,
+  CornerDownLeft,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { TOWER_FLOORS, TowerFloor } from '../data/towerLevels';
@@ -84,7 +85,15 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
   const [hasUsedHeal, setHasUsedHeal] = useState(false);
   const [hasUsedFreeze, setHasUsedFreeze] = useState(false);
 
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Tự động điều chỉnh chiều cao của textarea khi văn bản dài ra
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.max(64, textareaRef.current.scrollHeight)}px`;
+    }
+  }, [userSentence]);
 
   // Nạp tầng mới
   useEffect(() => {
@@ -99,7 +108,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
     setHasUsedHeal(false);
     setHasUsedFreeze(false);
     setTimeout(() => {
-      inputRef.current?.focus();
+      textareaRef.current?.focus();
     }, 200);
   }, [currentFloorIndex]);
 
@@ -150,7 +159,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
     setTimeout(() => setFloatingText(null), 1800);
   };
 
-  // Người chơi bấm Tấn công / Enter
+  // Người chơi bấm Tấn công / Phím Enter
   const handleAttack = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!userSentence.trim() || gameState !== 'fighting') return;
@@ -192,7 +201,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
       // Âm thanh phát âm câu tiếng Anh chuẩn để người học nghe lại
       setTimeout(() => {
         playSpeech(currentFloor.answers[0]);
-      }, 700);
+      }, 600);
 
       setTimeout(() => {
         setHeroAction('idle');
@@ -230,7 +239,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
       origin: { y: 0.6 },
     });
 
-    const rewardCoins = 25 * (currentFloor.floor);
+    const rewardCoins = 25 * currentFloor.floor;
     const newCoins = goldCoins + rewardCoins;
     setGoldCoins(newCoins);
     try {
@@ -321,68 +330,74 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
       if (!trimmed) return token;
       return `${trimmed} ${token}`;
     });
-    inputRef.current?.focus();
+    textareaRef.current?.focus();
+  };
+
+  // Xóa từ cuối cùng vừa nhập
+  const handleRemoveLastWord = () => {
+    setUserSentence((prev) => {
+      const words = prev.trim().split(/\s+/);
+      if (words.length <= 1) return '';
+      words.pop();
+      return words.join(' ');
+    });
+    textareaRef.current?.focus();
   };
 
   // Tính phần trăm máu quái vật
   const monsterHpPercent = Math.max(0, Math.round((monsterHp / monsterMaxHp) * 100));
 
-  return (
-    <div className="max-w-4xl mx-auto space-y-5 animate-in fade-in duration-300">
-      {/* 1. THANH TRẠNG THÁI TRẬN ĐẤU TRÊN CÙNG */}
-      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-md flex flex-wrap items-center justify-between gap-3">
-        {/* Nút quay lại phòng học */}
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={onBackToStudy}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Phòng học</span>
-          </button>
+  // Kiểm tra từ đã xuất hiện trong câu chưa để đổi kiểu nút (visual feedback)
+  const isWordUsed = (word: string) => {
+    const currentWords = userSentence.toLowerCase().split(/\s+/);
+    return currentWords.includes(word.toLowerCase());
+  };
 
-          <div className="flex items-center gap-2">
-            <span className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-rose-600 text-white flex items-center justify-center font-black text-sm shadow-xs">
-              🏰
+  const wordCount = userSentence.trim() ? userSentence.trim().split(/\s+/).length : 0;
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-4 animate-in fade-in duration-300 pb-12">
+      {/* 1. TOP NAV BAR CHO MINI GAME (Được tách biệt để không bao giờ bị cắt trên mobile) */}
+      <div className="bg-white/95 backdrop-blur-md rounded-2xl p-3 sm:p-4 border border-slate-200/80 shadow-xs flex items-center justify-between gap-2">
+        {/* Nút Về phòng học */}
+        <button
+          onClick={onBackToStudy}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span className="hidden xs:inline">Về phòng học</span>
+          <span className="xs:hidden">Thoát</span>
+        </button>
+
+        {/* Tên Tháp & Tầng */}
+        <div className="flex items-center gap-2">
+          <span className="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-500 to-rose-600 text-white flex items-center justify-center font-black text-xs shadow-xs">
+            🏰
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs sm:text-sm font-extrabold text-slate-900">
+              Tháp Ma Vương
             </span>
-            <div>
-              <div className="text-xs sm:text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                <span>Tháp Ma Vương</span>
-                <span className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase">
-                  Tầng {currentFloor.floor}/{TOWER_FLOORS.length}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-500 hidden sm:block">
-                Dịch câu để chém quái vật leo lên đỉnh tháp
-              </p>
-            </div>
+            <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-black uppercase tracking-wider shadow-2xs">
+              Tầng {currentFloor.floor}/{TOWER_FLOORS.length}
+            </span>
           </div>
         </div>
 
-        {/* Chỉ số Hiệp sĩ & Phần thưởng */}
-        <div className="flex items-center gap-3">
-          {/* Vàng */}
-          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
-            <Coins className="w-3.5 h-3.5 text-amber-500" />
-            <span>{goldCoins} Vàng</span>
+        {/* Chỉ số nhanh: Tim & Vàng */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-50 border border-amber-200/80 text-amber-900 text-xs font-bold">
+            <Coins className="w-3 h-3 text-amber-500" />
+            <span>{goldCoins}</span>
           </div>
 
-          {/* Combo */}
-          {comboCount > 1 && (
-            <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-xs font-black animate-bounce">
-              <Flame className="w-3.5 h-3.5 text-rose-600 fill-rose-500" />
-              <span>x{comboCount} Combo!</span>
-            </div>
-          )}
-
-          {/* Trái tim (HP) */}
-          <div className="flex items-center gap-1 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+          <div className="flex items-center gap-0.5 bg-slate-50 px-2 py-1 rounded-full border border-slate-200">
             {[1, 2, 3].map((heartIdx) => (
               <Heart
                 key={heartIdx}
-                className={`w-4 h-4 transition-all ${
+                className={`w-3.5 h-3.5 transition-all ${
                   heartIdx <= playerHp
-                    ? 'text-rose-500 fill-rose-500 scale-100'
+                    ? 'text-rose-500 fill-rose-500 scale-100 animate-pulse'
                     : 'text-slate-300 scale-90'
                 }`}
               />
@@ -391,23 +406,23 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
         </div>
       </div>
 
-      {/* 2. SÂN KHẤU CHIẾN ĐẤU CHÍNH (BATTLE ARENA) */}
-      <div className="relative overflow-hidden bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-5 sm:p-8 text-white border border-slate-800 shadow-2xl min-h-[300px] flex flex-col justify-between">
-        {/* Nền hoạt họa hạt năng lượng */}
-        <div className="absolute inset-0 opacity-15 pointer-events-none bg-[radial-gradient(#818cf8_1px,transparent_1px)] [background-size:16px_16px]" />
+      {/* 2. SÂN KHẤU CHIẾN ĐẤU (BATTLE STAGE RPG) */}
+      <div className="relative overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 rounded-3xl p-4 sm:p-6 text-white border-2 border-slate-800 shadow-xl min-h-[260px] flex flex-col justify-between">
+        {/* Lưới năng lượng nền nhẹ nhàng */}
+        <div className="absolute inset-0 opacity-10 pointer-events-none bg-[radial-gradient(#818cf8_1px,transparent_1px)] [background-size:16px_16px]" />
 
-        {/* Chữ bay sát thương nổi lên giữa sân đấu */}
+        {/* Chữ bay sát thương (Floating Combat Text) */}
         {floatingText && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30 animate-in zoom-in-50 fade-in duration-300">
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-30 animate-in zoom-in-75 fade-in duration-300">
             <div
-              className={`px-4 py-2 rounded-2xl font-black text-base sm:text-xl shadow-2xl border ${
+              className={`px-4 py-2 rounded-2xl font-black text-sm sm:text-lg shadow-2xl border ${
                 floatingText.type === 'crit'
-                  ? 'bg-rose-600 text-yellow-300 border-yellow-400 scale-110 animate-pulse'
+                  ? 'bg-rose-600 text-yellow-300 border-yellow-300 shadow-rose-600/50 scale-110 animate-bounce'
                   : floatingText.type === 'hit'
-                  ? 'bg-amber-500 text-white border-amber-300'
+                  ? 'bg-amber-500 text-white border-amber-300 shadow-amber-500/50'
                   : floatingText.type === 'heal'
-                  ? 'bg-emerald-600 text-white border-emerald-400'
-                  : 'bg-rose-800 text-white border-rose-600'
+                  ? 'bg-emerald-600 text-white border-emerald-300 shadow-emerald-600/50'
+                  : 'bg-rose-800 text-white border-rose-500 shadow-rose-900/50'
               }`}
             >
               {floatingText.text}
@@ -415,47 +430,60 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
           </div>
         )}
 
-        {/* Hàng ngang đấu sĩ: Hiệp sĩ (Trái) vs Quái vật (Phải) */}
-        <div className="relative z-10 flex items-center justify-between gap-4 py-4 sm:py-6">
-          {/* HIỆP SĨ */}
-          <div className="flex flex-col items-center text-center space-y-2 max-w-[140px] sm:max-w-[180px]">
-            {/* Sprite Hiệp Sĩ */}
-            <div
-              className={`w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-tr from-indigo-500 to-sky-400 border-2 border-indigo-200 flex items-center justify-center text-3xl sm:text-4xl shadow-lg transition-transform duration-300 ${
-                heroAction === 'attack'
-                  ? 'translate-x-6 scale-110 rotate-6 shadow-indigo-500/50'
-                  : heroAction === 'hurt'
-                  ? '-translate-x-4 scale-95 brightness-75 animate-shake'
-                  : 'hover:scale-105'
-              }`}
-            >
-              {profile?.avatar_url ? (
-                <img
-                  src={profile.avatar_url}
-                  alt="Hero"
-                  className="w-full h-full rounded-3xl object-cover"
-                />
-              ) : (
-                <span>🛡️</span>
+        {/* Hàng ngang 2 Đấu thủ: Hiệp Sĩ & Quái Vật */}
+        <div className="relative z-10 flex items-start justify-between gap-3 pt-1">
+          {/* CỘT HIỆP SĨ */}
+          <div className="flex-1 max-w-[150px] sm:max-w-[190px] flex flex-col items-center text-center space-y-1.5">
+            {/* Avatar Hiệp Sĩ */}
+            <div className="relative">
+              <div
+                className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr from-indigo-600 to-sky-400 border-2 border-indigo-300/80 flex items-center justify-center text-2xl sm:text-3xl shadow-lg transition-transform duration-300 ${
+                  heroAction === 'attack'
+                    ? 'translate-x-4 scale-110 rotate-6 shadow-indigo-500/50'
+                    : heroAction === 'hurt'
+                    ? '-translate-x-3 scale-95 brightness-75 animate-shake'
+                    : 'hover:scale-105'
+                }`}
+              >
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt="Hero"
+                    className="w-full h-full rounded-2xl object-cover"
+                  />
+                ) : (
+                  <span>🛡️</span>
+                )}
+              </div>
+
+              {/* Huy hiệu Combo nếu có */}
+              {comboCount > 1 && (
+                <div className="absolute -bottom-2 -right-1 px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-black border border-white shadow-xs flex items-center gap-0.5">
+                  <Flame className="w-2.5 h-2.5 fill-current" />
+                  <span>x{comboCount}</span>
+                </div>
               )}
             </div>
 
-            <div>
-              <div className="font-extrabold text-xs sm:text-sm text-white truncate max-w-[130px]">
-                {profile?.full_name || 'Hiệp Sĩ Dịch Thuật'}
+            <div className="w-full">
+              <div className="font-extrabold text-xs sm:text-sm text-white truncate">
+                {profile?.full_name || 'Hiệp Sĩ'}
               </div>
               <div className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider">
-                Dũng Sĩ Cấp {currentFloor.floor}
+                Cấp {currentFloor.floor}
               </div>
             </div>
 
             {/* Thanh Nộ Khí (Rage) */}
-            <div className="w-full space-y-1">
-              <div className="flex items-center justify-between text-[10px] font-bold text-amber-300">
-                <span>Nộ khí:</span>
+            <div className="w-full space-y-1 bg-slate-900/60 p-1.5 rounded-xl border border-slate-800">
+              <div className="flex items-center justify-between text-[9px] sm:text-[10px] font-bold text-amber-300">
+                <span className="flex items-center gap-0.5">
+                  <Zap className="w-2.5 h-2.5 fill-amber-300" />
+                  Nộ khí:
+                </span>
                 <span>{rageEnergy}%</span>
               </div>
-              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+              <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-amber-400 to-rose-500 transition-all duration-300"
                   style={{ width: `${rageEnergy}%` }}
@@ -464,54 +492,60 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
             </div>
           </div>
 
-          {/* ICON ĐỐI ĐẦU VS */}
-          <div className="flex flex-col items-center justify-center">
-            <div className="w-10 h-10 rounded-full bg-slate-800/80 border border-slate-700 flex items-center justify-center text-xs font-black text-amber-400 shadow-inner">
+          {/* CỘT GIỮA: ĐỒNG HỒ & VS */}
+          <div className="flex flex-col items-center justify-center pt-2 shrink-0">
+            <div className="w-8 h-8 rounded-full bg-slate-800/90 border border-slate-700 flex items-center justify-center text-[10px] font-black text-amber-400 shadow-inner">
               VS
             </div>
 
-            {/* Đồng hồ đếm ngược nạp chiêu */}
-            <div className="mt-2 flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-800/90 border border-slate-700 text-xs font-bold text-slate-200">
-              <Clock className={`w-3.5 h-3.5 ${timeLeft <= 10 ? 'text-rose-400 animate-spin' : 'text-sky-400'}`} />
-              <span className={timeLeft <= 10 ? 'text-rose-400 font-black animate-pulse' : ''}>
-                {timeLeft}s
-              </span>
+            {/* Đồng hồ đếm ngược */}
+            <div
+              className={`mt-2 flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold border transition-colors ${
+                timeLeft <= 10
+                  ? 'bg-rose-950/80 border-rose-500 text-rose-300 animate-pulse'
+                  : 'bg-slate-800/80 border-slate-700 text-slate-200'
+              }`}
+            >
+              <Clock
+                className={`w-3 h-3 ${timeLeft <= 10 ? 'text-rose-400 animate-spin' : 'text-sky-400'}`}
+              />
+              <span className="font-mono font-black">{timeLeft}s</span>
             </div>
           </div>
 
-          {/* QUÁI VẬT TẦNG THÁP */}
-          <div className="flex flex-col items-center text-center space-y-2 max-w-[150px] sm:max-w-[200px]">
+          {/* CỘT QUÁI VẬT */}
+          <div className="flex-1 max-w-[150px] sm:max-w-[190px] flex flex-col items-center text-center space-y-1.5">
             {/* Sprite Quái Vật */}
             <div
-              className={`w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-gradient-to-tr ${currentFloor.monster.bgGradient} border-2 border-white/20 flex items-center justify-center text-4xl sm:text-5xl shadow-xl transition-transform duration-300 ${
+              className={`w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-tr ${currentFloor.monster.bgGradient} border-2 border-white/20 flex items-center justify-center text-3xl sm:text-4xl shadow-xl transition-transform duration-300 ${
                 monsterAction === 'attack'
-                  ? '-translate-x-6 scale-110 -rotate-6'
+                  ? '-translate-x-4 scale-110 -rotate-6'
                   : monsterAction === 'hurt'
-                  ? 'translate-x-4 scale-90 brightness-150 animate-shake'
+                  ? 'translate-x-3 scale-90 brightness-150 animate-shake'
                   : 'hover:scale-105'
               }`}
             >
               <span>{currentFloor.monster.emoji}</span>
             </div>
 
-            <div>
-              <div className="font-black text-xs sm:text-sm text-white">
+            <div className="w-full">
+              <div className="font-black text-xs sm:text-sm text-white truncate">
                 {currentFloor.monster.name}
               </div>
-              <div className="text-[10px] text-slate-400 truncate max-w-[140px]">
+              <div className="text-[10px] text-slate-400 truncate">
                 {currentFloor.monster.title}
               </div>
             </div>
 
             {/* Thanh Máu Quái Vật (HP) */}
-            <div className="w-full space-y-1">
-              <div className="flex items-center justify-between text-[10px] font-bold text-slate-300">
+            <div className="w-full space-y-1 bg-slate-900/60 p-1.5 rounded-xl border border-slate-800">
+              <div className="flex items-center justify-between text-[9px] sm:text-[10px] font-bold text-slate-300">
                 <span>HP Quái:</span>
-                <span className="font-mono">
+                <span className="font-mono text-white">
                   {monsterHp}/{monsterMaxHp}
                 </span>
               </div>
-              <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                 <div
                   className={`h-full transition-all duration-300 ${
                     monsterHpPercent > 50
@@ -527,103 +561,153 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
           </div>
         </div>
 
-        {/* Lời thoại khiêu khích của quái vật */}
-        <div className="relative z-10 bg-slate-800/80 backdrop-blur-xs border border-slate-700/80 rounded-2xl p-3 text-xs text-center text-slate-300 italic">
-          "{currentFloor.monster.tauntMessage}"
+        {/* Bong bóng thoại khiêu khích của quái vật */}
+        <div className="relative z-10 mt-3 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 rounded-2xl p-2.5 text-xs text-center text-slate-200">
+          <span className="text-amber-400 font-bold mr-1">[{currentFloor.monster.name}]:</span>
+          <span className="italic">"{currentFloor.monster.tauntMessage}"</span>
         </div>
       </div>
 
-      {/* 3. BÀN RA CHIÊU & KHU VỰC DỊCH THUẬT (ACTION AREA) */}
-      <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-md space-y-4">
-        {/* Câu thần chú tiếng Việt cần giải mã */}
+      {/* 3. BÀN DỊCH THUẬT & RA CHIÊU (ACTION ARENA) */}
+      <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200/80 shadow-md space-y-4">
+        {/* Câu Tiếng Việt Thách Thức */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5" />
-              Câu thần chú cần dịch sang Tiếng Anh:
+            <span className="text-xs font-black uppercase tracking-wider text-indigo-700 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+              Câu cần dịch sang Tiếng Anh:
             </span>
-            <span className="text-[11px] font-bold text-slate-400 bg-slate-100 px-2.5 py-0.5 rounded-full">
+            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
               {currentFloor.category}
             </span>
           </div>
 
-          <div className="p-4 bg-indigo-50/70 border-2 border-indigo-200 rounded-2xl text-slate-900 font-extrabold text-base sm:text-lg">
+          <div className="p-3.5 sm:p-4 bg-gradient-to-r from-indigo-50/90 via-sky-50/50 to-indigo-50/90 border-2 border-indigo-200/80 rounded-2xl text-slate-900 font-extrabold text-base sm:text-lg leading-relaxed shadow-xs">
             "{currentFloor.questionVi}"
           </div>
 
           {currentFloor.hints && (
             <p className="text-[11px] text-slate-500 italic px-1 flex items-center gap-1">
-              <HelpCircle className="w-3 h-3 text-indigo-500" />
+              <HelpCircle className="w-3 h-3 text-indigo-500 shrink-0" />
               <span>Gợi ý: {currentFloor.hints}</span>
             </p>
           )}
         </div>
 
-        {/* Khung nhập câu dịch tiếng Anh */}
-        <form onSubmit={handleAttack} className="space-y-3">
-          <div className="relative flex items-center">
-            <input
-              ref={inputRef}
-              type="text"
-              value={userSentence}
-              onChange={(e) => setUserSentence(e.target.value)}
-              disabled={gameState !== 'fighting'}
-              placeholder="Nhập câu dịch tiếng Anh để tung đòn kiếm..."
-              className="w-full px-4 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-2xl text-sm sm:text-base font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden transition-all disabled:opacity-60"
-            />
-            <button
-              type="submit"
-              disabled={!userSentence.trim() || gameState !== 'fighting'}
-              className="absolute right-2 px-4 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-40 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-indigo-200 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
-            >
-              <Swords className="w-4 h-4" />
-              <span>Chém!</span>
-            </button>
+        {/* KHUNG NHẬP CÂU DỊCH: ĐA DÒNG, KHÔNG BAO GIỜ BỊ CHE CHỮ */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-slate-700 flex items-center gap-1">
+              <span>Lời dịch của bạn:</span>
+              {wordCount > 0 && (
+                <span className="text-[11px] px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-800 font-bold font-mono">
+                  {wordCount} từ
+                </span>
+              )}
+            </span>
+
+            {/* Nút thao tác nhanh câu */}
+            {userSentence.trim() && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleRemoveLastWord}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer"
+                  title="Xóa từ cuối cùng vừa thêm"
+                >
+                  <Delete className="w-3 h-3" />
+                  <span>Xóa từ cuối</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserSentence('')}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold transition-colors cursor-pointer"
+                  title="Xóa toàn bộ câu đã nhập"
+                >
+                  <X className="w-3 h-3" />
+                  <span>Xóa hết</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Dãy nút bấm từ vựng nhanh (Dành cho điện thoại hoặc lười gõ phím) */}
-          <div className="space-y-1.5">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-              Bấm từ để ghép câu nhanh:
+          {/* Ô nhập Textarea tự co giãn - Hiển thị 100% nội dung câu dịch */}
+          <div className="relative rounded-2xl bg-slate-50 border-2 border-slate-200 focus-within:border-indigo-600 focus-within:bg-white focus-within:ring-4 focus-within:ring-indigo-100 transition-all">
+            <textarea
+              ref={textareaRef}
+              rows={2}
+              value={userSentence}
+              onChange={(e) => setUserSentence(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleAttack();
+                }
+              }}
+              disabled={gameState !== 'fighting'}
+              placeholder="Gõ bản dịch tiếng Anh tại đây hoặc chạm các từ bên dưới..."
+              className="w-full p-3.5 bg-transparent outline-hidden text-base sm:text-lg font-semibold text-slate-900 placeholder:text-slate-400 resize-none leading-relaxed"
+            />
+          </div>
+        </div>
+
+        {/* KHU VỰC THẺ TỪ VỰNG GHÉP NHANH (WORD BANK TIỆN LỢI TRÊN DI ĐỘNG) */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+            <span>Chạm từ để ghép vào câu:</span>
+            <span className="normal-case text-slate-400 font-normal">
+              (Có thể gõ phím trực tiếp)
             </span>
-            <div className="flex flex-wrap gap-1.5">
-              {currentFloor.wordTokens.map((word, wIdx) => (
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {currentFloor.wordTokens.map((word, wIdx) => {
+              const used = isWordUsed(word);
+              return (
                 <button
                   key={wIdx}
                   type="button"
                   onClick={() => handleAddToken(word)}
                   disabled={gameState !== 'fighting'}
-                  className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 text-xs font-semibold transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                  className={`px-3 py-2 rounded-xl text-xs sm:text-sm font-bold border-2 transition-all cursor-pointer select-none active:translate-y-0.5 shadow-2xs ${
+                    used
+                      ? 'bg-slate-100 text-slate-400 border-slate-200 hover:border-slate-300'
+                      : 'bg-white hover:bg-indigo-50 text-slate-800 hover:text-indigo-700 border-slate-200 hover:border-indigo-300 shadow-xs'
+                  }`}
                 >
                   {word}
                 </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setUserSentence('')}
-                disabled={!userSentence}
-                className="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-semibold transition-all cursor-pointer disabled:opacity-40"
-                title="Xóa trắng"
-              >
-                Xóa
-              </button>
-            </div>
+              );
+            })}
           </div>
-        </form>
+        </div>
 
-        {/* 4. TÚI ĐỒ VẬT PHẨM & TUYỆT CHIÊU (POWER-UPS) */}
-        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+        {/* NÚT TUNG CHIÊU TẤN CÔNG (FULL WIDTH, RÕ RÀNG & THAO TÁC CỰC ĐÃ) */}
+        <button
+          type="button"
+          onClick={() => handleAttack()}
+          disabled={!userSentence.trim() || gameState !== 'fighting'}
+          className="w-full py-3.5 sm:py-4 px-6 bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-40 text-white rounded-2xl text-sm sm:text-base font-black shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98 disabled:pointer-events-none"
+        >
+          <Swords className="w-5 h-5" />
+          <span>TUNG ĐÒN CHÉM (Enter)</span>
+        </button>
+
+        {/* TÚI ĐẠO CỤ & TUYỆT CHIÊU (POWER-UPS) */}
+        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             {/* Bình Hồi Máu */}
             <button
               type="button"
               onClick={handleUseHealPotion}
               disabled={hasUsedHeal || playerHp >= maxPlayerHp}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 shadow-2xs active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200 shadow-2xs active:scale-95"
               title="Hồi 1 Trái Tim (1 lần/trận)"
             >
-              <span>🧪 Hồi Máu</span>
-              {hasUsedHeal && <span className="text-[10px]">(Đã dùng)</span>}
+              <span>🧪 Bình Máu</span>
+              <span className="text-[10px] text-rose-500 font-semibold">
+                {hasUsedHeal ? '(Đã dùng)' : '+1 ❤️'}
+              </span>
             </button>
 
             {/* Đồng Hồ Đóng Băng */}
@@ -631,11 +715,13 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
               type="button"
               onClick={handleUseFreezeHourglass}
               disabled={hasUsedFreeze}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-sky-50 hover:bg-sky-100 text-sky-700 border-sky-200 shadow-2xs active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed bg-sky-50 hover:bg-sky-100 text-sky-700 border-sky-200 shadow-2xs active:scale-95"
               title="Cộng thêm 20 giây suy nghĩ"
             >
               <span>❄️ Đóng Băng</span>
-              {hasUsedFreeze && <span className="text-[10px]">(Đã dùng)</span>}
+              <span className="text-[10px] text-sky-500 font-semibold">
+                {hasUsedFreeze ? '(Đã dùng)' : '+20s'}
+              </span>
             </button>
           </div>
 
@@ -644,21 +730,21 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
             type="button"
             onClick={handleUseExcalibur}
             disabled={rageEnergy < 100 || gameState !== 'fighting'}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer shadow-md ${
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shadow-md ${
               rageEnergy >= 100
                 ? 'bg-gradient-to-r from-amber-500 to-rose-600 text-white animate-pulse hover:scale-105 shadow-amber-200'
                 : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'
             }`}
           >
             <Zap className="w-4 h-4 fill-current" />
-            <span>⚡ Kiếm Thần Excalibur (Nộ Khí 100%)</span>
+            <span>⚡ Kiếm Thần Excalibur ({rageEnergy}%)</span>
           </button>
         </div>
       </div>
 
-      {/* 5. MODAL CHIẾN THẮNG TẦNG (FLOOR CLEARED) */}
+      {/* 4. MODAL CHIẾN THẮNG TẦNG (FLOOR CLEARED) */}
       {gameState === 'floor_cleared' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full text-center space-y-5 shadow-2xl border border-slate-200 animate-in zoom-in-95">
             <div className="w-16 h-16 rounded-3xl bg-amber-100 text-amber-600 flex items-center justify-center text-3xl mx-auto shadow-inner">
               🏆
@@ -703,7 +789,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
         </div>
       )}
 
-      {/* 6. MODAL THẤT BẠI (GAME OVER) */}
+      {/* 5. MODAL THẤT BẠI (GAME OVER) */}
       {gameState === 'game_over' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full text-center space-y-5 shadow-2xl border border-rose-200 animate-in zoom-in-95">
@@ -722,7 +808,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
 
             <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-left text-xs space-y-1">
               <span className="font-bold text-slate-500 block text-[11px] uppercase">
-                Gợi ý cho câu này:
+                Gợi ý câu dịch chuẩn:
               </span>
               <p className="font-semibold text-slate-800">
                 "{currentFloor.answers[0]}"
@@ -750,7 +836,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
         </div>
       )}
 
-      {/* 7. MODAL PHÁ ĐẢO THÁP MA VƯƠNG (TOWER COMPLETED) */}
+      {/* 6. MODAL PHÁ ĐẢO THÁP MA VƯƠNG (TOWER COMPLETED) */}
       {gameState === 'tower_completed' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/85 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-gradient-to-b from-white to-amber-50 rounded-3xl p-6 sm:p-8 max-w-lg w-full text-center space-y-5 shadow-2xl border-2 border-amber-300 animate-in zoom-in-95">

@@ -81,15 +81,15 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Nút Chế độ Đấu Boss (Tháp Ma Vương) */}
           <button
             onClick={() => onViewChange(currentView === 'battle' ? 'study' : 'battle')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border shadow-2xs active:scale-95 ${
+            className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border shadow-2xs active:scale-95 shrink-0 ${
               currentView === 'battle'
-                ? 'bg-rose-600 text-white border-rose-600 shadow-rose-200 ring-2 ring-rose-200'
-                : 'bg-gradient-to-r from-amber-50 to-rose-50 hover:from-amber-100 hover:to-rose-100 text-rose-700 border-rose-200'
+                ? 'bg-slate-800 hover:bg-slate-900 text-white border-slate-700'
+                : 'bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-600 hover:to-rose-700 text-white border-amber-400 shadow-xs shadow-rose-200'
             }`}
-            title="Thử thách Tháp Ma Vương: Dịch câu đánh Boss"
+            title={currentView === 'battle' ? 'Trở về phòng học' : 'Thử thách Tháp Ma Vương'}
           >
-            <span className="text-sm leading-none">⚔️</span>
-            <span className="hidden xs:inline">
+            <span className="text-xs sm:text-sm leading-none">⚔️</span>
+            <span className="text-[11px] sm:text-xs font-black whitespace-nowrap">
               {currentView === 'battle' ? 'Về phòng học' : 'Đấu Boss'}
             </span>
           </button>
