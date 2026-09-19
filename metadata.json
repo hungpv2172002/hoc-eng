@@ -1,0 +1,6 @@
+{
+  "name": "Daily Translation Practice",
+  "description": "Ứng dụng học tiếng Anh giao tiếp bằng phương pháp dịch câu kèm từ vựng gợi ý hàng ngày, hỗ trợ Supabase OTP, giới hạn VIP và sinh câu tự động bằng Gemini AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
