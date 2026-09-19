@@ -9,6 +9,7 @@ import { AdminView } from './components/AdminView';
 import { AuthModal } from './components/AuthModal';
 import { ProfileModal } from './components/ProfileModal';
 import { GuideModal } from './components/GuideModal';
+import { FooterContact } from './components/FooterContact';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -16,6 +17,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   appSubtitle: 'Dịch câu mỗi ngày kèm từ vựng gợi ý',
   appIcon: 'BookOpen',
   appIconType: 'lucide',
+  contactEmail: 'hungpv2172002@gmail.com',
+  contactFacebook: 'https://facebook.com',
+  contactTiktok: 'https://tiktok.com',
 };
 
 export default function App() {
@@ -24,11 +28,21 @@ export default function App() {
       const saved = localStorage.getItem('translation_user_profile');
       if (saved) {
         const parsed: Profile = JSON.parse(saved);
-        if (parsed.email?.toLowerCase() === 'hungpv2172002@gmail.com') {
-          parsed.role = 'admin';
-          parsed.is_vip = true;
+        // Xác minh tài khoản có trong danh sách đã đăng ký chính thức
+        const registeredUsers = localStorage.getItem('app_registered_users');
+        if (registeredUsers) {
+          const list = JSON.parse(registeredUsers);
+          const exists = list.some(
+            (u: any) => u.email?.toLowerCase() === parsed.email?.toLowerCase()
+          );
+          if (exists) {
+            if (parsed.email?.toLowerCase() === 'hungpv2172002@gmail.com') {
+              parsed.role = 'admin';
+              parsed.is_vip = true;
+            }
+            return parsed;
+          }
         }
-        return parsed;
       }
     } catch (e) {}
     return null;
@@ -444,21 +458,38 @@ export default function App() {
 
 
       {/* FOOTER */}
-      <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-400">
-        <div className="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p>
-            © 2026 {settings.appName} • Luyện dịch Việt ➔ Anh mỗi ngày kèm phản hồi thông minh
-          </p>
-          <div className="flex items-center gap-4 text-slate-500">
-            <span>Rèn luyện bền bỉ mỗi ngày</span>
+      <footer className="border-t border-slate-200 bg-white py-6 text-xs text-slate-500">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
+          {/* Bản quyền & Thông tin ứng dụng */}
+          <div className="flex flex-col sm:flex-row items-center gap-2 text-center sm:text-left">
+            <p className="font-medium text-slate-600">
+              © 2026 {settings.appName} • Luyện dịch Việt ➔ Anh mỗi ngày
+            </p>
+            <span className="hidden sm:inline text-slate-300">•</span>
+            <span className="text-slate-400">Rèn luyện bền bỉ mỗi ngày</span>
             {profile?.role === 'admin' && (
-              <button
-                onClick={() => setIsGuideOpen(true)}
-                className="text-indigo-600 hover:text-indigo-800 font-semibold underline underline-offset-2 cursor-pointer"
-              >
-                Mã SQL Supabase
-              </button>
+              <>
+                <span className="hidden sm:inline text-slate-300">•</span>
+                <button
+                  onClick={() => setIsGuideOpen(true)}
+                  className="text-indigo-600 hover:text-indigo-800 font-semibold underline underline-offset-2 cursor-pointer"
+                >
+                  Mã SQL Supabase
+                </button>
+              </>
             )}
+          </div>
+
+          {/* CÁC ICON LIÊN HỆ DƯỚI CÙNG TRANG (EMAIL, FACEBOOK, TIKTOK) */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-medium text-slate-400 hidden lg:inline mr-1">
+              Liên hệ & hỗ trợ:
+            </span>
+            <FooterContact
+              email={settings.contactEmail}
+              facebookUrl={settings.contactFacebook}
+              tiktokUrl={settings.contactTiktok}
+            />
           </div>
         </div>
       </footer>

@@ -1,6 +1,9 @@
 {
-  "appName": "Daily Translation",
+  "appName": "Dịch Mỗi Ngày",
   "appSubtitle": "Dịch câu mỗi ngày kèm từ vựng gợi ý",
-  "appIcon": "BookOpen",
-  "appIconType": "lucide"
+  "appIcon": "🎯",
+  "appIconType": "emoji",
+  "contactEmail": "hungpv2172002@gmail.com",
+  "contactFacebook": "https://facebook.com",
+  "contactTiktok": "https://tiktok.com"
 }

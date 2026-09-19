@@ -59,6 +59,75 @@ export const CAREER_TRACKS: CareerTrackInfo[] = [
   },
 ];
 
+export type CEFRLevel = 'all' | 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
+
+export interface CEFRLevelInfo {
+  id: CEFRLevel;
+  code: string;
+  name: string;
+  desc: string;
+  badgeBg: string;
+  badgeText: string;
+  borderClass: string;
+}
+
+export const CEFR_LEVELS: CEFRLevelInfo[] = [
+  {
+    id: 'all',
+    code: 'Tất cả',
+    name: 'Mọi trình độ',
+    desc: 'Luyện tập hỗn hợp tất cả các cấp độ',
+    badgeBg: 'bg-slate-100',
+    badgeText: 'text-slate-700',
+    borderClass: 'border-slate-300',
+  },
+  {
+    id: 'A1',
+    code: 'A1',
+    name: 'Mới bắt đầu',
+    desc: 'Từ vựng cơ bản, mẫu câu ngắn quen thuộc',
+    badgeBg: 'bg-emerald-50',
+    badgeText: 'text-emerald-700',
+    borderClass: 'border-emerald-300',
+  },
+  {
+    id: 'A2',
+    code: 'A2',
+    name: 'Sơ cấp',
+    desc: 'Tình huống sinh hoạt, du lịch, giao tiếp hàng ngày',
+    badgeBg: 'bg-teal-50',
+    badgeText: 'text-teal-700',
+    borderClass: 'border-teal-300',
+  },
+  {
+    id: 'B1',
+    code: 'B1',
+    name: 'Trung cấp',
+    desc: 'Diễn đạt ý kiến, giải thích, thảo luận công việc',
+    badgeBg: 'bg-blue-50',
+    badgeText: 'text-blue-700',
+    borderClass: 'border-blue-300',
+  },
+  {
+    id: 'B2',
+    code: 'B2',
+    name: 'Trung cao cấp',
+    desc: 'Thuyết trình, trao đổi chuyên môn, lập luận logic',
+    badgeBg: 'bg-indigo-50',
+    badgeText: 'text-indigo-700',
+    borderClass: 'border-indigo-300',
+  },
+  {
+    id: 'C1',
+    code: 'C1',
+    name: 'Cao cấp',
+    desc: 'Đàm phán chuyên sâu, văn phong tinh tế và lưu loát',
+    badgeBg: 'bg-purple-50',
+    badgeText: 'text-purple-700',
+    borderClass: 'border-purple-300',
+  },
+];
+
 export interface Question {
   id: number;
   vi: string;
@@ -66,6 +135,7 @@ export interface Question {
   answers: string[];
   created_date?: string;
   category?: CareerCategory;
+  level?: 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
 }
 
 
@@ -81,5 +151,8 @@ export interface AppSettings {
   appSubtitle: string;
   appIcon: string;
   appIconType: 'lucide' | 'emoji';
+  contactEmail?: string;
+  contactFacebook?: string;
+  contactTiktok?: string;
 }
 

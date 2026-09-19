@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Profile, AppSettings } from '../types';
 import { AppIcon, PRESET_ICONS, PRESET_EMOJIS } from './AppIcon';
+import { FooterContact } from './FooterContact';
 import {
   ShieldCheck,
   Search,
@@ -18,6 +19,10 @@ import {
   Save,
   Palette,
   FileCode,
+  Mail,
+  Facebook,
+  Music2,
+  ExternalLink,
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -49,7 +54,6 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [selectedGenCategory, setSelectedGenCategory] = useState<string>('general');
 
   // Form cài đặt tên & icon app
-
   const [appNameInput, setAppNameInput] = useState(settings?.appName || 'Daily Translation');
   const [appSubtitleInput, setAppSubtitleInput] = useState(settings?.appSubtitle || 'Dịch câu mỗi ngày kèm từ vựng gợi ý');
   const [selectedIcon, setSelectedIcon] = useState(settings?.appIcon || 'BookOpen');
@@ -57,6 +61,30 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [customEmoji, setCustomEmoji] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
+  // Form cài đặt Kênh liên hệ dưới chân trang (Email, Facebook, TikTok)
+  const [contactEmailInput, setContactEmailInput] = useState(
+    settings?.contactEmail || 'hungpv2172002@gmail.com'
+  );
+  const [contactFacebookInput, setContactFacebookInput] = useState(
+    settings?.contactFacebook || 'https://facebook.com'
+  );
+  const [contactTiktokInput, setContactTiktokInput] = useState(
+    settings?.contactTiktok || 'https://tiktok.com'
+  );
+  const [isSavingContacts, setIsSavingContacts] = useState(false);
+
+  // Cập nhật giá trị khi props settings thay đổi
+  useEffect(() => {
+    if (settings) {
+      if (settings.appName) setAppNameInput(settings.appName);
+      if (settings.appSubtitle !== undefined) setAppSubtitleInput(settings.appSubtitle);
+      if (settings.appIcon) setSelectedIcon(settings.appIcon);
+      if (settings.appIconType) setIconType(settings.appIconType);
+      if (settings.contactEmail !== undefined) setContactEmailInput(settings.contactEmail);
+      if (settings.contactFacebook !== undefined) setContactFacebookInput(settings.contactFacebook);
+      if (settings.contactTiktok !== undefined) setContactTiktokInput(settings.contactTiktok);
+    }
+  }, [settings]);
 
   const isAdmin = currentUser?.role === 'admin';
 
@@ -100,6 +128,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
       appSubtitle: appSubtitleInput.trim(),
       appIcon: selectedIcon,
       appIconType: iconType,
+      contactEmail: contactEmailInput.trim(),
+      contactFacebook: contactFacebookInput.trim(),
+      contactTiktok: contactTiktokInput.trim(),
     };
 
     try {
@@ -126,6 +157,47 @@ export const AdminView: React.FC<AdminViewProps> = ({
       });
     } finally {
       setIsSavingSettings(false);
+      setTimeout(() => setToast(null), 5000);
+    }
+  };
+
+  const handleSaveContacts = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingContacts(true);
+
+    const newSettings: AppSettings = {
+      appName: appNameInput.trim() || settings?.appName || 'Daily Translation',
+      appSubtitle: appSubtitleInput.trim() || settings?.appSubtitle || '',
+      appIcon: selectedIcon || settings?.appIcon || 'BookOpen',
+      appIconType: iconType || settings?.appIconType || 'lucide',
+      contactEmail: contactEmailInput.trim(),
+      contactFacebook: contactFacebookInput.trim(),
+      contactTiktok: contactTiktokInput.trim(),
+    };
+
+    try {
+      if (onSaveSettings) {
+        await onSaveSettings(newSettings);
+      } else {
+        const res = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newSettings),
+        });
+        if (!res.ok) throw new Error('Lỗi khi lưu cài đặt liên hệ');
+      }
+
+      setToast({
+        type: 'success',
+        text: 'Đã lưu thành công thông tin liên hệ (Email, Facebook, TikTok)!',
+      });
+    } catch (err: any) {
+      setToast({
+        type: 'error',
+        text: err.message || 'Không thể lưu cài đặt liên hệ.',
+      });
+    } finally {
+      setIsSavingContacts(false);
       setTimeout(() => setToast(null), 5000);
     }
   };
@@ -395,6 +467,161 @@ export const AdminView: React.FC<AdminViewProps> = ({
                 <>
                   <Save className="w-3.5 h-3.5" />
                   <span>Lưu Thay Đổi Tên & Biểu Tượng</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* BANNER CÀI ĐẶT KÊNH LIÊN HỆ: EMAIL, FACEBOOK, TIKTOK */}
+      <div className="bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-sm space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-2.5">
+            <span className="p-2 rounded-xl bg-rose-50 text-rose-600">
+              <Mail className="w-5 h-5" />
+            </span>
+            <div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900">
+                Tùy chỉnh Kênh Liên Hệ (Email, Facebook, TikTok)
+              </h3>
+              <p className="text-xs text-slate-500">
+                Quản lý các biểu tượng liên hệ xuất hiện ở chân trang (Footer) của người học
+              </p>
+            </div>
+          </div>
+
+          {/* Live Preview */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl px-3.5 py-2 flex items-center gap-2.5 max-w-full">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Xem trước chân trang:</span>
+            <FooterContact
+              email={contactEmailInput}
+              facebookUrl={contactFacebookInput}
+              tiktokUrl={contactTiktokInput}
+            />
+          </div>
+        </div>
+
+        <form onSubmit={handleSaveContacts} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* 1. EMAIL */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-rose-500" />
+                  <span>Địa chỉ Email liên hệ</span>
+                </label>
+                {contactEmailInput.trim() && (
+                  <a
+                    href={`mailto:${contactEmailInput.trim()}`}
+                    className="text-[11px] text-rose-600 hover:text-rose-700 hover:underline flex items-center gap-0.5 font-medium"
+                    title="Thử mở trình gửi email"
+                  >
+                    <span>Thử gửi</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                )}
+              </div>
+              <input
+                type="email"
+                value={contactEmailInput}
+                onChange={(e) => setContactEmailInput(e.target.value)}
+                placeholder="ví dụ: hungpv2172002@gmail.com"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs focus:bg-white focus:border-rose-500 outline-hidden transition-colors"
+              />
+              <p className="text-[11px] text-slate-400">
+                Khi học viên bấm icon Email ở chân trang, hệ thống sẽ mở trình gửi thư tới địa chỉ này.
+              </p>
+            </div>
+
+            {/* 2. FACEBOOK */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Facebook className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Đường dẫn Facebook</span>
+                </label>
+                {contactFacebookInput.trim() && (
+                  <a
+                    href={
+                      contactFacebookInput.startsWith('http')
+                        ? contactFacebookInput
+                        : `https://${contactFacebookInput}`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] text-blue-600 hover:text-blue-700 hover:underline flex items-center gap-0.5 font-medium"
+                    title="Thử mở liên kết Facebook"
+                  >
+                    <span>Mở thử</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                )}
+              </div>
+              <input
+                type="text"
+                value={contactFacebookInput}
+                onChange={(e) => setContactFacebookInput(e.target.value)}
+                placeholder="ví dụ: https://facebook.com/your-fanpage"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs focus:bg-white focus:border-blue-500 outline-hidden transition-colors"
+              />
+              <p className="text-[11px] text-slate-400">
+                Link fanpage, nhóm hoặc trang cá nhân hỗ trợ giải đáp thắc mắc dịch thuật.
+              </p>
+            </div>
+
+            {/* 3. TIKTOK */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                  <Music2 className="w-3.5 h-3.5 text-slate-900" />
+                  <span>Đường dẫn TikTok</span>
+                </label>
+                {contactTiktokInput.trim() && (
+                  <a
+                    href={
+                      contactTiktokInput.startsWith('http')
+                        ? contactTiktokInput
+                        : `https://${contactTiktokInput}`
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] text-slate-800 hover:text-slate-950 hover:underline flex items-center gap-0.5 font-medium"
+                    title="Thử mở liên kết TikTok"
+                  >
+                    <span>Mở thử</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                )}
+              </div>
+              <input
+                type="text"
+                value={contactTiktokInput}
+                onChange={(e) => setContactTiktokInput(e.target.value)}
+                placeholder="ví dụ: https://tiktok.com/@dailytranslation"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs focus:bg-white focus:border-slate-800 outline-hidden transition-colors"
+              />
+              <p className="text-[11px] text-slate-400">
+                Kênh TikTok chia sẻ mẹo ngữ pháp, video phát âm và dịch câu tiếng Anh.
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-2 flex items-center justify-end">
+            <button
+              type="submit"
+              disabled={isSavingContacts}
+              className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-md shadow-rose-100 hover:shadow-rose-200 transition-all flex items-center gap-2 cursor-pointer"
+            >
+              {isSavingContacts ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Đang lưu...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>Lưu Kênh Liên Hệ (Footer)</span>
                 </>
               )}
             </button>

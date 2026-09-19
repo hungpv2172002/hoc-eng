@@ -2,6 +2,8 @@ import express from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import crypto from 'crypto';
+import nodemailer from 'nodemailer';
 import { GoogleGenAI, Type } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
@@ -48,13 +50,16 @@ let memoryQuestionsStore: any[] = INITIAL_QUESTIONS.map((q, i) => ({
   created_date: new Date().toISOString().split('T')[0],
 }));
 
-// Cài đặt tên và biểu tượng ứng dụng (có thể chỉnh sửa từ trang Admin)
+// Cài đặt tên, biểu tượng và kênh liên lạc ứng dụng (có thể chỉnh sửa từ trang Admin)
 const SETTINGS_FILE = path.join(process.cwd(), 'app-settings.json');
 let appSettings = {
   appName: 'Daily Translation',
   appSubtitle: 'Dịch câu mỗi ngày kèm từ vựng gợi ý',
   appIcon: 'BookOpen',
   appIconType: 'lucide',
+  contactEmail: 'hungpv2172002@gmail.com',
+  contactFacebook: 'https://facebook.com',
+  contactTiktok: 'https://tiktok.com',
 };
 
 // Đọc cài đặt đã lưu nếu có
@@ -442,7 +447,15 @@ app.get('/api/settings', (req, res) => {
 // Endpoint cập nhật cài đặt ứng dụng từ trang Admin
 app.post('/api/settings', (req, res) => {
   try {
-    const { appName, appSubtitle, appIcon, appIconType } = req.body || {};
+    const {
+      appName,
+      appSubtitle,
+      appIcon,
+      appIconType,
+      contactEmail,
+      contactFacebook,
+      contactTiktok,
+    } = req.body || {};
 
     if (appName && typeof appName === 'string') {
       appSettings.appName = appName.trim();
@@ -456,6 +469,15 @@ app.post('/api/settings', (req, res) => {
     if (appIconType === 'lucide' || appIconType === 'emoji') {
       appSettings.appIconType = appIconType;
     }
+    if (typeof contactEmail === 'string') {
+      appSettings.contactEmail = contactEmail.trim();
+    }
+    if (typeof contactFacebook === 'string') {
+      appSettings.contactFacebook = contactFacebook.trim();
+    }
+    if (typeof contactTiktok === 'string') {
+      appSettings.contactTiktok = contactTiktok.trim();
+    }
 
     // Ghi vào file disk
     try {
@@ -466,7 +488,7 @@ app.post('/api/settings', (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Đã lưu thay đổi tên và biểu tượng ứng dụng thành công!',
+      message: 'Đã lưu thay đổi cài đặt ứng dụng thành công!',
       settings: appSettings,
     });
   } catch (err: any) {
@@ -513,6 +535,175 @@ app.get('/download-schema', (req, res) => {
     return res.status(404).send('Không tìm thấy file supabase-schema.sql');
   } catch (err: any) {
     return res.status(500).send('Lỗi: ' + err.message);
+  }
+});
+
+// ==========================================
+// HỆ THỐNG XÁC THỰC MÃ OTP 6 SỐ GỬI QUA EMAIL
+// ==========================================
+interface StoredOtpRecord {
+  otp: string;
+  expiresAt: number;
+}
+const otpMemoryStore = new Map<string, StoredOtpRecord>();
+
+function createMailTransporter() {
+  const host = process.env.SMTP_HOST;
+  const port = parseInt(process.env.SMTP_PORT || '587', 10);
+  const user = process.env.SMTP_USER || process.env.GMAIL_USER;
+  const pass = process.env.SMTP_PASS || process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD;
+
+  if (host && user && pass) {
+    return nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass },
+    });
+  }
+
+  // Nếu dùng Gmail
+  if (user && pass && user.includes('@gmail.com')) {
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass },
+    });
+  }
+
+  return null;
+}
+
+// Endpoint gửi mã xác thực 6 chữ số đến hộp thư Email của người dùng
+app.post('/api/auth/send-otp', async (req, res) => {
+  try {
+    const { email, fullName } = req.body || {};
+    const cleanEmail = (email || '').trim().toLowerCase();
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return res.status(400).json({ success: false, error: 'Địa chỉ email không hợp lệ.' });
+    }
+
+    // Sinh mã ngẫu nhiên 6 số bảo mật bằng crypto
+    const otpNumber = 100000 + crypto.randomInt(0, 900000);
+    const otp = otpNumber.toString();
+
+    // Lưu mã trong 10 phút
+    otpMemoryStore.set(cleanEmail, {
+      otp,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+    });
+
+    const transporter = createMailTransporter();
+    let emailSent = false;
+    let mailError: string | null = null;
+
+    if (transporter) {
+      try {
+        const fromAddress =
+          process.env.SMTP_FROM ||
+          process.env.SMTP_USER ||
+          `Daily Translation <noreply@dailytranslation.app>`;
+
+        await transporter.sendMail({
+          from: fromAddress,
+          to: cleanEmail,
+          subject: `[Daily Translation] Mã xác thực đăng ký tài khoản: ${otp}`,
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px;">
+              <div style="text-align: center; margin-bottom: 24px;">
+                <h1 style="color: #4f46e5; margin: 0; font-size: 24px; font-weight: 800;">Daily Translation</h1>
+                <p style="color: #64748b; font-size: 13px; margin-top: 4px;">Luyện dịch Việt ➔ Anh mỗi ngày</p>
+              </div>
+              <p style="color: #334155; font-size: 15px; line-height: 1.6;">
+                Xin chào <strong>${fullName || cleanEmail.split('@')[0]}</strong>,
+              </p>
+              <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+                Bạn đang thực hiện đăng ký tài khoản học tập trên <strong>Daily Translation</strong>. Dưới đây là mã xác thực 6 chữ số của bạn:
+              </p>
+              <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 16px; padding: 24px; text-align: center; margin: 24px 0;">
+                <span style="font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #1e1b4b; font-family: monospace;">${otp}</span>
+              </div>
+              <p style="color: #64748b; font-size: 13px; line-height: 1.6;">
+                ⏰ Mã này có hiệu lực trong vòng <strong>10 phút</strong>. Vì lý do an toàn bảo mật, tuyệt đối không chia sẻ mã này cho người khác.
+              </p>
+              <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8;">
+                Nếu bạn không gửi yêu cầu này, vui lòng bỏ qua email này.
+              </div>
+            </div>
+          `,
+        });
+        emailSent = true;
+        console.log(`[EMAIL OTP] Đã gửi mã xác thực thành công tới email: ${cleanEmail}`);
+      } catch (err: any) {
+        console.error('Lỗi gửi email qua SMTP:', err.message);
+        mailError = err.message;
+      }
+    } else {
+      console.log(`[EMAIL OTP (Console Log)] Đã tạo mã xác thực gửi cho ${cleanEmail}: ${otp}`);
+    }
+
+    // Nếu có Supabase, cũng đồng bộ gửi OTP qua Supabase
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.auth.signInWithOtp({ email: cleanEmail });
+      } catch (e) {}
+    }
+
+    // TUYỆT ĐỐI KHÔNG TRẢ VỀ MÃ OTP TRONG PHẢN HỒI JSON
+    return res.json({
+      success: true,
+      emailSent,
+      hasSmtpConfigured: !!transporter,
+      message: 'Mã xác thực 6 chữ số đã được gửi tới email của bạn.',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint xác thực mã 6 số từ người dùng
+app.post('/api/auth/verify-otp', (req, res) => {
+  try {
+    const { email, otp } = req.body || {};
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanOtp = (otp || '').trim();
+
+    if (!cleanEmail || !cleanOtp) {
+      return res.status(400).json({ success: false, error: 'Thiếu email hoặc mã xác thực.' });
+    }
+
+    const record = otpMemoryStore.get(cleanEmail);
+    if (!record) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mã xác thực không tồn tại hoặc đã được sử dụng. Vui lòng bấm "Gửi lại mã".',
+      });
+    }
+
+    if (Date.now() > record.expiresAt) {
+      otpMemoryStore.delete(cleanEmail);
+      return res.status(400).json({
+        success: false,
+        error: 'Mã xác thực đã hết hạn hiệu lực (quá 10 phút). Vui lòng yêu cầu mã mới.',
+      });
+    }
+
+    if (record.otp !== cleanOtp) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mã xác thực không chính xác. Vui lòng kiểm tra lại hòm thư email của bạn.',
+      });
+    }
+
+    // Khớp mã thành công!
+    otpMemoryStore.delete(cleanEmail);
+    return res.json({
+      success: true,
+      verified: true,
+      message: 'Xác thực mã email thành công!',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

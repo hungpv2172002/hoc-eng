@@ -1,5 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Question, Profile, CareerCategory, CareerTrackInfo, CAREER_TRACKS } from '../types';
+import {
+  Question,
+  Profile,
+  CareerCategory,
+  CareerTrackInfo,
+  CAREER_TRACKS,
+  CEFRLevel,
+  CEFR_LEVELS,
+} from '../types';
 import {
   Volume2,
   CheckCircle,
@@ -19,13 +27,20 @@ import {
   Hotel,
   MessageSquare,
   Lock,
+  Layers,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { formatFriendlyDate, getDailyRotatedQuestions } from '../lib/questionRotation';
+import {
+  formatFriendlyDate,
+  getDailyRotatedQuestions,
+  getQuestionLevel,
+  shuffleQuestions,
+} from '../lib/questionRotation';
 import { INITIAL_QUESTIONS } from '../data/initialQuestions';
 import { AudioButton, playSpeech, SPEED_OPTIONS } from './AudioButton';
 import { CareerTrackSelector } from './CareerTrackSelector';
 import { VipPromptModal } from './VipPromptModal';
+import { LevelSelector } from './LevelSelector';
 
 
 interface StudyViewProps {
@@ -89,6 +104,29 @@ export const StudyView: React.FC<StudyViewProps> = ({
   const [vipModalTrack, setVipModalTrack] = useState<CareerTrackInfo | null>(null);
   const [shuffleSeed, setShuffleSeed] = useState(0);
 
+  // 3. Quản lý Trình độ người học (all, A1, A2, B1, B2, C1)
+  const [selectedLevel, setSelectedLevel] = useState<CEFRLevel>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('translation_user_cefr_level');
+        if (saved && ['all', 'A1', 'A2', 'B1', 'B2', 'C1'].includes(saved)) {
+          return saved as CEFRLevel;
+        }
+      } catch (e) {}
+    }
+    return 'all';
+  });
+
+  const handleSelectLevel = (level: CEFRLevel) => {
+    setSelectedLevel(level);
+    try {
+      localStorage.setItem('translation_user_cefr_level', level);
+    } catch (e) {}
+    setCurrentIndex(0);
+    setUserAnswer('');
+    setResultState('idle');
+  };
+
   const isVip = profile?.is_vip ?? false;
   const isAdmin = profile?.role === 'admin';
   const hasVipAccess = isVip || isAdmin;
@@ -120,7 +158,31 @@ export const StudyView: React.FC<StudyViewProps> = ({
     return counts;
   }, [allAvailableQuestions]);
 
-  // Lọc câu hỏi theo chuyên ngành đang chọn (TỰ ĐỘNG ĐẢO THEO NGÀY CHO CHUYÊN NGÀNH ĐÓ!)
+  // Đếm số lượng câu hỏi theo từng trình độ CEFR cho chuyên ngành hiện tại
+  const levelCounts = useMemo(() => {
+    const counts: Record<CEFRLevel, number> = {
+      all: 0,
+      A1: 0,
+      A2: 0,
+      B1: 0,
+      B2: 0,
+      C1: 0,
+    };
+    const catPool = allAvailableQuestions.filter(
+      (q) => (q.category || 'general') === selectedCategory
+    );
+    const targetPool = catPool.length > 0 ? catPool : allAvailableQuestions;
+    counts.all = targetPool.length;
+    targetPool.forEach((q) => {
+      const lvl = getQuestionLevel(q);
+      if (counts[lvl] !== undefined) {
+        counts[lvl]++;
+      }
+    });
+    return counts;
+  }, [allAvailableQuestions, selectedCategory]);
+
+  // Lọc câu hỏi theo chuyên ngành và TRÌNH ĐỘ (TỰ ĐỘNG ĐẢO NGẪU NHIÊN MỖI KHI REFRESH)
   const filteredQuestions = useMemo(() => {
     let pool = allAvailableQuestions.filter(
       (q) => (q.category || 'general') === selectedCategory
@@ -134,13 +196,25 @@ export const StudyView: React.FC<StudyViewProps> = ({
       pool = allAvailableQuestions;
     }
 
-    // Tự động xáo trộn theo ngày queryDate để mỗi ngày học một bộ câu mới
-    const rotated = getDailyRotatedQuestions(pool, todayDateString);
-    if (shuffleSeed > 0) {
-      return [...rotated].sort(() => Math.random() - 0.5);
+    // Lọc theo trình độ A1, A2, B1, B2, C1
+    if (selectedLevel !== 'all') {
+      const levelMatches = pool.filter((q) => getQuestionLevel(q) === selectedLevel);
+      if (levelMatches.length > 0) {
+        pool = levelMatches;
+      } else {
+        // Fallback sang tất cả các câu của trình độ đó nếu chuyên ngành hiện tại chưa có
+        const globalLevelMatches = allAvailableQuestions.filter(
+          (q) => getQuestionLevel(q) === selectedLevel
+        );
+        if (globalLevelMatches.length > 0) {
+          pool = globalLevelMatches;
+        }
+      }
     }
-    return rotated;
-  }, [allAvailableQuestions, selectedCategory, todayDateString, shuffleSeed]);
+
+    // Tự động xáo trộn ngẫu nhiên hoàn toàn (Fisher-Yates) mỗi lần refresh hoặc đổi bộ lọc
+    return shuffleQuestions(pool);
+  }, [allAvailableQuestions, selectedCategory, selectedLevel, shuffleSeed]);
 
   // Reset vị trí và nạp ngay câu đầu tiên khi khách hàng ấn vào Ngành chuyên sâu
   const handleSelectCategory = (cat: CareerCategory) => {
@@ -229,6 +303,34 @@ export const StudyView: React.FC<StudyViewProps> = ({
         questionCounts={questionCounts}
       />
 
+      {/* 0.1. THANH LỰA CHỌN TRÌNH ĐỘ CEFR (A1, A2, B1, B2, C1, TẤT CẢ) */}
+      <LevelSelector
+        selectedLevel={selectedLevel}
+        onSelectLevel={handleSelectLevel}
+        levelCounts={levelCounts}
+      />
+
+      {/* THÔNG BÁO KHI ĐANG LỌC THEO TRÌNH ĐỘ */}
+      {selectedLevel !== 'all' && (
+        <div className="p-3.5 bg-indigo-50/90 border border-indigo-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-indigo-950 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-lg bg-indigo-600 text-white font-extrabold font-mono text-xs shadow-2xs">
+              {selectedLevel}
+            </span>
+            <span>
+              Đang hiển thị câu hỏi phù hợp với trình độ <strong>{CEFR_LEVELS.find((l) => l.id === selectedLevel)?.name} ({selectedLevel})</strong> ({filteredQuestions.length} câu).
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleSelectLevel('all')}
+            className="text-indigo-700 hover:text-indigo-900 font-bold underline cursor-pointer text-xs"
+          >
+            Làm tất cả trình độ
+          </button>
+        </div>
+      )}
+
       {/* POPUP KÍCH HOẠT VIP KHI XEM THÔNG TIN GÓI VIP */}
       <VipPromptModal
         isOpen={!!vipModalTrack}
@@ -316,8 +418,8 @@ export const StudyView: React.FC<StudyViewProps> = ({
               <span className="font-semibold text-slate-800">
                 {formatFriendlyDate(todayDateString)}
               </span>
-              <span className="hidden sm:inline-block text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium border border-emerald-200">
-                Tự động đảo câu mới mỗi ngày
+              <span className="hidden sm:inline-block text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
+                Tự động đảo câu ngẫu nhiên khi tải trang
               </span>
             </div>
 
@@ -339,6 +441,10 @@ export const StudyView: React.FC<StudyViewProps> = ({
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold">
                 CÂU {currentIndex + 1} / {filteredQuestions.length}
+              </span>
+              <span className="text-slate-400">•</span>
+              <span className="px-2 py-0.5 rounded-md bg-violet-100 text-violet-800 font-extrabold text-[11px] font-mono">
+                {getQuestionLevel(currentQuestion)}
               </span>
               <span className="text-slate-400">•</span>
               <span className="text-slate-700 font-medium">
@@ -407,6 +513,9 @@ export const StudyView: React.FC<StudyViewProps> = ({
                     VIP
                   </span>
                 )}
+                <span className="text-xs font-bold px-2.5 py-1 rounded-xl bg-violet-50 text-violet-800 border border-violet-200/80 flex items-center gap-1 font-mono">
+                  <span>Trình độ {getQuestionLevel(currentQuestion)}</span>
+                </span>
               </div>
 
               {/* BỘ CHỌN TỐC ĐỘ PHÁT ÂM (0.75x, 0.9x, 1.0x, 1.25x) */}
