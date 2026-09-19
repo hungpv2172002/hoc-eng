@@ -1070,9 +1070,9 @@ var memoryQuestionsStore = INITIAL_QUESTIONS.map((q, i) => ({
 }));
 var SETTINGS_FILE = path.join(process.cwd(), "app-settings.json");
 var appSettings = {
-  appName: "Dịch Mỗi Ngày",
-  appSubtitle: "Dịch câu mỗi ngày kèm từ vựng gợi ý",
-  appIcon: "🎯",
+  appName: "D\u1ECBch M\u1ED7i Ng\xE0y",
+  appSubtitle: "D\u1ECBch c\xE2u m\u1ED7i ng\xE0y k\xE8m t\u1EEB v\u1EF1ng g\u1EE3i \xFD",
+  appIcon: "\u{1F3AF}",
   appIconType: "emoji",
   contactEmail: "hungpv2172002@gmail.com",
   contactFacebook: "https://facebook.com",
@@ -1091,7 +1091,7 @@ try {
     }
   }
 } catch (e) {
-  console.warn("Không thể đọc file app-settings.json:", e);
+  console.warn("Kh\xF4ng th\u1EC3 \u0111\u1ECDc file app-settings.json:", e);
 }
 function getDailyRotatedQuestions(allQuestions, dateStr) {
   if (!allQuestions || allQuestions.length === 0) return [];
@@ -1380,19 +1380,13 @@ app.get(["/api/questions", "/questions"], async (req, res) => {
 app.get(["/api/settings", "/settings"], async (req, res) => {
   if (supabaseAdmin) {
     try {
-      const { data: dbData } = await supabaseAdmin
-        .from("app_settings")
-        .select("value")
-        .eq("id", "default")
-        .maybeSingle();
+      const { data: dbData } = await supabaseAdmin.from("app_settings").select("value").eq("id", "default").maybeSingle();
       if (dbData?.value && typeof dbData.value === "object") {
         appSettings = { ...appSettings, ...dbData.value };
       }
     } catch (e) {
-      // Tiếp tục nếu bảng chưa tồn tại
     }
   }
-
   return res.json({
     success: true,
     settings: appSettings
@@ -1435,9 +1429,9 @@ app.post(["/api/settings", "/settings"], async (req, res) => {
     } catch (e) {
       try {
         fs.writeFileSync("/tmp/app-settings.json", JSON.stringify(appSettings, null, 2), "utf-8");
-      } catch (e2) {}
+      } catch (e2) {
+      }
     }
-
     if (supabaseAdmin) {
       try {
         await supabaseAdmin.from("app_settings").upsert({
@@ -1446,17 +1440,135 @@ app.post(["/api/settings", "/settings"], async (req, res) => {
           updated_at: (/* @__PURE__ */ new Date()).toISOString()
         });
       } catch (dbErr) {
-        console.warn("Lỗi lưu app_settings vào Supabase:", dbErr);
+        console.warn("L\u1ED7i l\u01B0u app_settings v\xE0o Supabase:", dbErr);
       }
     }
-
     return res.json({
       success: true,
-      message: "Đã lưu thay đổi cài đặt ứng dụng thành công!",
+      message: "\u0110\xE3 l\u01B0u thay \u0111\u1ED5i c\xE0i \u0111\u1EB7t \u1EE9ng d\u1EE5ng th\xE0nh c\xF4ng!",
       settings: appSettings
     });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });
+  }
+});
+app.post(["/api/lookup-word", "/lookup-word"], async (req, res) => {
+  try {
+    const { word, contextSentence, category } = req.body || {};
+    if (!word || typeof word !== "string" || !word.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Vui lòng cung cấp từ hoặc cụm từ bạn muốn tra."
+      });
+    }
+    const cleanWord = word.trim();
+    const cleanContext = typeof contextSentence === "string" ? contextSentence.trim() : "";
+    const cleanCategory = typeof category === "string" ? category.trim() : "general";
+    const googleTranslateUrl = `https://translate.google.com/?sl=auto&tl=en&text=${encodeURIComponent(cleanWord)}&op=translate`;
+    let lookupData = null;
+    if (process.env.GEMINI_API_KEY && ai) {
+      const prompt = `Bạn là Trợ lý từ vựng và gia sư dịch thuật tiếng Anh chuyên nghiệp trong ứng dụng "Dịch Mỗi Ngày".
+Người học đang làm bài tập dịch câu sau: "${cleanContext}" (Chủ đề: ${cleanCategory}).
+Người học đang bị bối rối hoặc chưa biết từ/cụm từ này: "${cleanWord}".
+
+Hãy phân tích và gợi ý cách dịch chính xác, tự nhiên nhất cho từ/cụm từ này trong ngữ cảnh câu trên.
+Đảm bảo trả về ĐÚNG 1 JSON Object tuân thủ nghiêm ngặt cấu trúc sau:
+{
+  "query": "${cleanWord}",
+  "bestMatch": "Từ hoặc cụm từ tiếng Anh tương đương chuẩn xác nhất (ví dụ: 'reschedule the meeting', 'keep someone posted')",
+  "phonetic": "Phiên âm IPA chuẩn quốc tế nếu có (ví dụ: '/ˌriːˈskedʒ.uːl/')",
+  "partOfSpeech": "Từ loại ngắn gọn (noun, verb, phrasal verb, adjective, idiom...)",
+  "meaningVi": "Nghĩa tiếng Việt ngắn gọn, đúng ngữ cảnh câu đang dịch",
+  "explanation": "Giải thích 1-2 câu ngắn gọn, dễ hiểu về cách dùng từ này trong câu người học đang gặp",
+  "synonyms": ["Từ đồng nghĩa 1", "Từ đồng nghĩa 2"],
+  "collocations": ["Cụm từ hay đi kèm 1", "Cụm từ hay đi kèm 2"],
+  "exampleSentence": {
+    "en": "Một câu ví dụ ngắn gọn, thực tế chứa từ đó",
+    "vi": "Bản dịch tiếng Việt của câu ví dụ"
+  },
+  "usageTip": "Mẹo nhỏ ghi nhớ hoặc lưu ý ngữ pháp/giới từ khi dịch"
+}`;
+      const CANDIDATE_MODELS = [
+        "gemini-3.8-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-flash-latest"
+      ];
+      for (const modelCandidate of CANDIDATE_MODELS) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelCandidate,
+            contents: prompt,
+            config: {
+              temperature: 0.3,
+              responseMimeType: "application/json",
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  query: { type: Type.STRING },
+                  bestMatch: { type: Type.STRING },
+                  phonetic: { type: Type.STRING },
+                  partOfSpeech: { type: Type.STRING },
+                  meaningVi: { type: Type.STRING },
+                  explanation: { type: Type.STRING },
+                  synonyms: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                  },
+                  collocations: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                  },
+                  exampleSentence: {
+                    type: Type.OBJECT,
+                    properties: {
+                      en: { type: Type.STRING },
+                      vi: { type: Type.STRING }
+                    }
+                  },
+                  usageTip: { type: Type.STRING }
+                },
+                required: ["query", "bestMatch", "meaningVi", "explanation"]
+              }
+            }
+          });
+          if (response.text) {
+            lookupData = JSON.parse(response.text);
+            break;
+          }
+        } catch (geminiErr) {
+          console.warn(`Gemini (${modelCandidate}) tra từ lỗi:`, geminiErr?.message);
+        }
+      }
+    }
+    if (!lookupData) {
+      lookupData = {
+        query: cleanWord,
+        bestMatch: cleanWord,
+        phonetic: "",
+        partOfSpeech: "Tra cứu từ",
+        meaningVi: `Tra từ: ${cleanWord}`,
+        explanation: "Bạn có thể xem trực tiếp kết quả dịch nhanh trên Google Dịch.",
+        synonyms: [],
+        collocations: [],
+        exampleSentence: {
+          en: `Practice translating with "${cleanWord}"`,
+          vi: `Luyện tập dịch với từ "${cleanWord}"`
+        },
+        usageTip: "Hãy xem gợi ý từ vựng trong bài tập hoặc tra trên Google Dịch."
+      };
+    }
+    return res.json({
+      success: true,
+      data: {
+        ...lookupData,
+        googleTranslateUrl
+      }
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Lỗi xử lý tra từ vựng."
+    });
   }
 });
 app.get("/api/schema", (req, res) => {

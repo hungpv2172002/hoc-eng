@@ -43,6 +43,7 @@ import { AudioButton, playSpeech, SPEED_OPTIONS } from './AudioButton';
 import { CareerTrackSelector } from './CareerTrackSelector';
 import { VipPromptModal } from './VipPromptModal';
 import { LevelSelector } from './LevelSelector';
+import { WordLookupModal } from './WordLookupModal';
 
 
 interface StudyViewProps {
@@ -149,6 +150,17 @@ export const StudyView: React.FC<StudyViewProps> = ({
         localStorage.setItem('translation_show_hints', String(next));
       } catch (e) {}
       return next;
+    });
+  };
+
+  // 5. Quản lý Modal Trợ lý từ vựng AI & Google Dịch
+  const [isLookupModalOpen, setIsLookupModalOpen] = useState(false);
+
+  const handleInsertWord = (wordToInsert: string) => {
+    setUserAnswer((prev) => {
+      const trimmed = prev.trim();
+      if (!trimmed) return wordToInsert;
+      return `${trimmed} ${wordToInsert}`;
     });
   };
 
@@ -578,6 +590,17 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 </span>
 
                 <div className="flex items-center gap-2">
+                  {/* Nút Trợ lý Tra từ vựng AI & Google Dịch */}
+                  <button
+                    type="button"
+                    onClick={() => setIsLookupModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-800 border-indigo-200/90 shadow-2xs active:scale-95"
+                    title="Bí từ? Bấm để tra từ vựng bằng AI bám sát ngữ cảnh câu hoặc mở Google Dịch"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Tra từ AI</span>
+                  </button>
+
                   {/* Nút bật / tắt gợi ý nhanh */}
                   <button
                     type="button"
@@ -702,6 +725,19 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 </div>
               </div>
 
+              {/* Dòng trợ giúp tra từ vựng AI */}
+              <div className="flex items-center justify-between px-1 text-xs -mt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsLookupModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer group"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-500 group-hover:rotate-12 transition-transform" />
+                  <span className="group-hover:underline">Bí từ vựng? Bấm để tra cứu nhanh với AI & Google Dịch</span>
+                </button>
+                <span className="hidden sm:inline text-slate-400 text-[11px]">Nhấn Enter để kiểm tra</span>
+              </div>
+
               {/* Thông báo kết quả so khớp */}
               {resultState === 'correct' && (
                 <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-900 text-sm flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
@@ -792,6 +828,14 @@ export const StudyView: React.FC<StudyViewProps> = ({
           </button>
         </div>
       )}
+
+      {/* MODAL TRỢ LÝ TỪ VỰNG AI & GOOGLE DỊCH */}
+      <WordLookupModal
+        isOpen={isLookupModalOpen}
+        onClose={() => setIsLookupModalOpen(false)}
+        currentQuestion={currentQuestion}
+        onInsertWord={handleInsertWord}
+      />
     </div>
   );
 };

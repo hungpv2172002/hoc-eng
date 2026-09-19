@@ -542,6 +542,139 @@ app.post(['/api/settings', '/settings'], async (req, res) => {
   }
 });
 
+// Endpoint Trợ lý từ vựng AI (Tra từ / cụm từ theo ngữ cảnh & đối chiếu Google Dịch)
+app.post(['/api/lookup-word', '/lookup-word'], async (req, res) => {
+  try {
+    const { word, contextSentence, category } = req.body || {};
+    if (!word || typeof word !== 'string' || !word.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Vui lòng cung cấp từ hoặc cụm từ bạn muốn tra.',
+      });
+    }
+
+    const cleanWord = word.trim();
+    const cleanContext = typeof contextSentence === 'string' ? contextSentence.trim() : '';
+    const cleanCategory = typeof category === 'string' ? category.trim() : 'general';
+
+    const googleTranslateUrl = `https://translate.google.com/?sl=auto&tl=en&text=${encodeURIComponent(
+      cleanWord
+    )}&op=translate`;
+
+    let lookupData: any = null;
+
+    if (process.env.GEMINI_API_KEY) {
+      const prompt = `Bạn là Trợ lý từ vựng và gia sư dịch thuật tiếng Anh chuyên nghiệp trong ứng dụng "Dịch Mỗi Ngày".
+Người học đang làm bài tập dịch câu sau: "${cleanContext}" (Chủ đề: ${cleanCategory}).
+Người học đang bị bối rối hoặc chưa biết từ/cụm từ này: "${cleanWord}".
+
+Hãy phân tích và gợi ý cách dịch chính xác, tự nhiên nhất cho từ/cụm từ này trong ngữ cảnh câu trên.
+Đảm bảo trả về ĐÚNG 1 JSON Object tuân thủ nghiêm ngặt cấu trúc sau:
+{
+  "query": "${cleanWord}",
+  "bestMatch": "Từ hoặc cụm từ tiếng Anh tương đương chuẩn xác nhất (ví dụ: 'reschedule the meeting', 'keep someone posted')",
+  "phonetic": "Phiên âm IPA chuẩn quốc tế nếu có (ví dụ: '/ˌriːˈskedʒ.uːl/')",
+  "partOfSpeech": "Từ loại ngắn gọn (noun, verb, phrasal verb, adjective, idiom...)",
+  "meaningVi": "Nghĩa tiếng Việt ngắn gọn, đúng ngữ cảnh câu đang dịch",
+  "explanation": "Giải thích 1-2 câu ngắn gọn, dễ hiểu về cách dùng từ này trong câu người học đang gặp",
+  "synonyms": ["Từ đồng nghĩa 1", "Từ đồng nghĩa 2"],
+  "collocations": ["Cụm từ hay đi kèm 1", "Cụm từ hay đi kèm 2"],
+  "exampleSentence": {
+    "en": "Một câu ví dụ ngắn gọn, thực tế chứa từ đó",
+    "vi": "Bản dịch tiếng Việt của câu ví dụ"
+  },
+  "usageTip": "Mẹo nhỏ ghi nhớ hoặc lưu ý ngữ pháp/giới từ khi dịch"
+}`;
+
+      const CANDIDATE_MODELS = [
+        'gemini-3.8-flash',
+        'gemini-3.1-flash-lite',
+        'gemini-flash-latest',
+      ];
+
+      for (const modelCandidate of CANDIDATE_MODELS) {
+        try {
+          const response = await ai.models.generateContent({
+            model: modelCandidate,
+            contents: prompt,
+            config: {
+              temperature: 0.3,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                  query: { type: Type.STRING },
+                  bestMatch: { type: Type.STRING },
+                  phonetic: { type: Type.STRING },
+                  partOfSpeech: { type: Type.STRING },
+                  meaningVi: { type: Type.STRING },
+                  explanation: { type: Type.STRING },
+                  synonyms: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  collocations: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                  },
+                  exampleSentence: {
+                    type: Type.OBJECT,
+                    properties: {
+                      en: { type: Type.STRING },
+                      vi: { type: Type.STRING },
+                    },
+                  },
+                  usageTip: { type: Type.STRING },
+                },
+                required: ['query', 'bestMatch', 'meaningVi', 'explanation'],
+              },
+            },
+          });
+
+          if (response.text) {
+            lookupData = JSON.parse(response.text);
+            break;
+          }
+        } catch (geminiErr: any) {
+          console.warn(`Gemini (${modelCandidate}) tra từ lỗi:`, geminiErr?.message);
+        }
+      }
+    }
+
+    // Nếu không có Gemini hoặc gặp lỗi mạng, tạo phản hồi dự phòng thông minh
+    if (!lookupData) {
+      lookupData = {
+        query: cleanWord,
+        bestMatch: cleanWord,
+        phonetic: '',
+        partOfSpeech: 'Tra cứu từ',
+        meaningVi: `Tra từ: ${cleanWord}`,
+        explanation: 'Bạn có thể xem trực tiếp kết quả dịch nhanh trên Google Dịch.',
+        synonyms: [],
+        collocations: [],
+        exampleSentence: {
+          en: `Practice translating with "${cleanWord}"`,
+          vi: `Luyện tập dịch với từ "${cleanWord}"`,
+        },
+        usageTip: 'Hãy xem gợi ý từ vựng trong bài tập hoặc tra trên Google Dịch.',
+      };
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        ...lookupData,
+        googleTranslateUrl,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Lỗi xử lý tra từ vựng.',
+    });
+  }
+});
+
 
 // Endpoint trả về nội dung file SQL để dễ dàng sao chép từ giao diện Quản Trị
 app.get('/api/schema', (req, res) => {

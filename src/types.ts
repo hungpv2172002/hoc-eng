@@ -156,3 +156,20 @@ export interface AppSettings {
   contactTiktok?: string;
 }
 
+export interface WordLookupResult {
+  query: string;
+  bestMatch: string;
+  phonetic?: string;
+  partOfSpeech?: string;
+  meaningVi: string;
+  explanation: string;
+  synonyms?: string[];
+  collocations?: string[];
+  exampleSentence?: {
+    en: string;
+    vi: string;
+  };
+  usageTip?: string;
+  googleTranslateUrl?: string;
+}
+
