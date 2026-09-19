@@ -555,6 +555,7 @@ app.get('/download-schema', (req, res) => {
 interface StoredOtpRecord {
   otp: string;
   expiresAt: number;
+  type: 'register' | 'forgot';
 }
 const otpMemoryStore = new Map<string, StoredOtpRecord>();
 
@@ -584,11 +585,12 @@ function createMailTransporter() {
   return null;
 }
 
-// Endpoint gửi mã xác thực 6 chữ số đến hộp thư Email của người dùng
+// Endpoint gửi mã xác thực 6 chữ số đến hộp thư Email (Đăng ký & Quên mật khẩu)
 app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
   try {
-    const { email, fullName } = req.body || {};
+    const { email, fullName, type = 'register' } = req.body || {};
     const cleanEmail = (email || '').trim().toLowerCase();
+    const otpType: 'register' | 'forgot' = type === 'forgot' ? 'forgot' : 'register';
 
     if (!cleanEmail || !cleanEmail.includes('@')) {
       return res.status(400).json({ success: false, error: 'Địa chỉ email không hợp lệ.' });
@@ -602,6 +604,7 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
     otpMemoryStore.set(cleanEmail, {
       otp,
       expiresAt: Date.now() + 10 * 60 * 1000,
+      type: otpType,
     });
 
     const transporter = createMailTransporter();
@@ -615,10 +618,24 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
           process.env.SMTP_USER ||
           `Daily Translation <noreply@dailytranslation.app>`;
 
+        const isForgot = otpType === 'forgot';
+        const emailSubject = isForgot
+          ? `[Daily Translation] Mã khôi phục mật khẩu: ${otp}`
+          : `[Daily Translation] Mã xác thực đăng ký tài khoản: ${otp}`;
+
+        const greetingName = fullName || cleanEmail.split('@')[0];
+        const actionText = isForgot
+          ? 'Bạn (hoặc ai đó) vừa yêu cầu <strong>khôi phục mật khẩu</strong> tài khoản học tập trên <strong>Daily Translation</strong>.'
+          : 'Bạn đang thực hiện <strong>đăng ký tài khoản học tập</strong> trên <strong>Daily Translation</strong>.';
+
+        const reminderText = isForgot
+          ? 'Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này. Mật khẩu hiện tại của bạn vẫn được giữ an toàn.'
+          : 'Vì lý do an toàn bảo mật, tuyệt đối không chia sẻ mã này cho người khác.';
+
         await transporter.sendMail({
           from: fromAddress,
           to: cleanEmail,
-          subject: `[Daily Translation] Mã xác thực đăng ký tài khoản: ${otp}`,
+          subject: emailSubject,
           html: `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px;">
               <div style="text-align: center; margin-bottom: 24px;">
@@ -626,45 +643,57 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
                 <p style="color: #64748b; font-size: 13px; margin-top: 4px;">Luyện dịch Việt ➔ Anh mỗi ngày</p>
               </div>
               <p style="color: #334155; font-size: 15px; line-height: 1.6;">
-                Xin chào <strong>${fullName || cleanEmail.split('@')[0]}</strong>,
+                Xin chào <strong>${greetingName}</strong>,
               </p>
               <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-                Bạn đang thực hiện đăng ký tài khoản học tập trên <strong>Daily Translation</strong>. Dưới đây là mã xác thực 6 chữ số của bạn:
+                ${actionText} Dưới đây là mã xác thực 6 chữ số của bạn:
               </p>
               <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 16px; padding: 24px; text-align: center; margin: 24px 0;">
                 <span style="font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #1e1b4b; font-family: monospace;">${otp}</span>
               </div>
               <p style="color: #64748b; font-size: 13px; line-height: 1.6;">
-                ⏰ Mã này có hiệu lực trong vòng <strong>10 phút</strong>. Vì lý do an toàn bảo mật, tuyệt đối không chia sẻ mã này cho người khác.
+                ⏰ Mã này có hiệu lực trong vòng <strong>10 phút</strong>. ${reminderText}
               </p>
               <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8;">
-                Nếu bạn không gửi yêu cầu này, vui lòng bỏ qua email này.
+                Daily Translation App • Hệ thống học tiếng Anh giao tiếp thông minh
               </div>
             </div>
           `,
         });
         emailSent = true;
-        console.log(`[EMAIL OTP] Đã gửi mã xác thực thành công tới email: ${cleanEmail}`);
+        console.log(`[EMAIL OTP] Đã gửi mã xác thực (${otpType}) thành công tới email: ${cleanEmail}`);
       } catch (err: any) {
         console.error('Lỗi gửi email qua SMTP:', err.message);
         mailError = err.message;
       }
     } else {
-      console.log(`[EMAIL OTP (Console Log)] Đã tạo mã xác thực gửi cho ${cleanEmail}: ${otp}`);
+      console.log(`[EMAIL OTP (Chưa cấu hình SMTP)] Tạo mã xác thực cho ${cleanEmail}: ${otp}`);
     }
 
-    // Nếu có Supabase, cũng đồng bộ gửi OTP qua Supabase
-    if (supabaseAdmin) {
-      try {
-        await supabaseAdmin.auth.signInWithOtp({ email: cleanEmail });
-      } catch (e) {}
+    // Nếu chưa cấu hình SMTP gửi thư thật:
+    if (!transporter) {
+      return res.status(400).json({
+        success: false,
+        emailSent: false,
+        hasSmtpConfigured: false,
+        error:
+          'Máy chủ chưa cấu hình dịch vụ gửi Email (SMTP_USER / SMTP_PASS). Vui lòng cấu hình tài khoản gửi email trên Vercel hoặc biến môi trường.',
+      });
     }
 
-    // TUYỆT ĐỐI KHÔNG TRẢ VỀ MÃ OTP TRONG PHẢN HỒI JSON
+    if (!emailSent && mailError) {
+      return res.status(500).json({
+        success: false,
+        emailSent: false,
+        hasSmtpConfigured: true,
+        error: `Không thể gửi email xác thực: ${mailError}. Vui lòng kiểm tra lại cấu hình tài khoản gửi thư.`,
+      });
+    }
+
     return res.json({
       success: true,
-      emailSent,
-      hasSmtpConfigured: !!transporter,
+      emailSent: true,
+      hasSmtpConfigured: true,
       message: 'Mã xác thực 6 chữ số đã được gửi tới email của bạn.',
     });
   } catch (err: any) {
@@ -672,7 +701,7 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
   }
 });
 
-// Endpoint xác thực mã 6 số từ người dùng
+// Endpoint xác thực mã 6 số từ người dùng (cho đăng ký)
 app.post(['/api/auth/verify-otp', '/auth/verify-otp'], (req, res) => {
   try {
     const { email, otp } = req.body || {};
@@ -687,7 +716,7 @@ app.post(['/api/auth/verify-otp', '/auth/verify-otp'], (req, res) => {
     if (!record) {
       return res.status(400).json({
         success: false,
-        error: 'Mã xác thực không tồn tại hoặc đã được sử dụng. Vui lòng bấm "Gửi lại mã".',
+        error: 'Mã xác thực không tồn tại hoặc đã hết hạn. Vui lòng bấm "Gửi lại mã".',
       });
     }
 
@@ -706,12 +735,84 @@ app.post(['/api/auth/verify-otp', '/auth/verify-otp'], (req, res) => {
       });
     }
 
-    // Khớp mã thành công!
+    // Khớp mã thành công! Xóa mã
     otpMemoryStore.delete(cleanEmail);
     return res.json({
       success: true,
       verified: true,
       message: 'Xác thực mã email thành công!',
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Endpoint khôi phục / đặt lại mật khẩu bằng mã OTP gửi về Email
+app.post(['/api/auth/reset-password', '/auth/reset-password'], async (req, res) => {
+  try {
+    const { email, otp, rawPassword } = req.body || {};
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanOtp = (otp || '').trim();
+
+    if (!cleanEmail || !cleanOtp || !rawPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Vui lòng cung cấp đầy đủ email, mã xác thực và mật khẩu mới.',
+      });
+    }
+
+    if (rawPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mật khẩu mới phải có ít nhất 6 ký tự.',
+      });
+    }
+
+    const record = otpMemoryStore.get(cleanEmail);
+    if (!record) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mã xác thực không tồn tại hoặc đã hết hạn. Vui lòng yêu cầu mã khôi phục mới.',
+      });
+    }
+
+    if (Date.now() > record.expiresAt) {
+      otpMemoryStore.delete(cleanEmail);
+      return res.status(400).json({
+        success: false,
+        error: 'Mã xác thực đã hết hạn (quá 10 phút). Vui lòng yêu cầu gửi lại mã.',
+      });
+    }
+
+    if (record.otp !== cleanOtp) {
+      return res.status(400).json({
+        success: false,
+        error: 'Mã xác thực không chính xác. Vui lòng kiểm tra lại hòm thư email của bạn.',
+      });
+    }
+
+    // Cập nhật mật khẩu trong Supabase nếu có cấu hình
+    if (supabaseAdmin) {
+      try {
+        const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+        const targetUser = (listData?.users as any[])?.find((u: any) => u.email === cleanEmail);
+        if (targetUser) {
+          await supabaseAdmin.auth.admin.updateUserById(targetUser.id, {
+            password: rawPassword,
+          });
+          console.log(`[Supabase Auth] Đã cập nhật mật khẩu mới cho ${cleanEmail}`);
+        }
+      } catch (supaErr: any) {
+        console.warn('Lỗi cập nhật mật khẩu trên Supabase:', supaErr.message);
+      }
+    }
+
+    // Xóa mã OTP sau khi sử dụng thành công
+    otpMemoryStore.delete(cleanEmail);
+
+    return res.json({
+      success: true,
+      message: 'Đặt lại mật khẩu thành công! Bạn có thể đăng nhập bằng mật khẩu mới.',
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });

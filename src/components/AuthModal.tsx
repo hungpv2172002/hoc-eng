@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   MailCheck,
   Send,
+  KeyRound,
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -77,9 +78,16 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onLoginSuccess,
   initialMode = 'login',
 }) => {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
   // Bước trong quy trình đăng ký: 'form' (điền thông tin) hoặc 'otp' (nhập mã xác thực từ email)
   const [registerStep, setRegisterStep] = useState<'form' | 'otp'>('form');
+
+  // Trạng thái cho quy trình Quên mật khẩu
+  const [forgotStep, setForgotStep] = useState<'email' | 'reset'>('email');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -100,6 +108,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (isOpen) {
       setMode(initialMode);
       setRegisterStep('form');
+      setForgotStep('email');
+      setForgotEmail('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setShowNewPassword(false);
       setErrorMsg('');
       setSuccessMsg('');
       setPassword('');
@@ -109,16 +122,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   }, [isOpen, initialMode]);
 
-  // Bộ đếm ngược thời gian gửi lại mã OTP
+  // Bộ đếm ngược thời gian gửi lại mã OTP (cho cả Đăng ký và Quên mật khẩu)
   useEffect(() => {
     let timer: any;
-    if (registerStep === 'otp' && resendCountdown > 0) {
+    const isCounting = (registerStep === 'otp' || (mode === 'forgot' && forgotStep === 'reset')) && resendCountdown > 0;
+    if (isCounting) {
       timer = setInterval(() => {
         setResendCountdown((prev) => prev - 1);
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [registerStep, resendCountdown]);
+  }, [registerStep, mode, forgotStep, resendCountdown]);
 
   if (!isOpen) return null;
 
@@ -239,9 +253,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     return registeredUser;
   };
 
-  // Gửi lại mã OTP về Email
+  // Gửi lại mã OTP về Email (Đăng ký hoặc Quên mật khẩu)
   const handleResendOtp = async () => {
-    if (resendCountdown > 0 || !pendingReg) return;
+    if (resendCountdown > 0) return;
+    const targetEmail = mode === 'forgot' ? forgotEmail : pendingReg?.email;
+    const targetName = mode === 'forgot' ? '' : pendingReg?.fullName;
+    const targetType = mode === 'forgot' ? 'forgot' : 'register';
+
+    if (!targetEmail) return;
+
     setLoading(true);
     setErrorMsg('');
     try {
@@ -249,54 +269,32 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: pendingReg.email,
-          fullName: pendingReg.fullName,
+          email: targetEmail,
+          fullName: targetName,
+          type: targetType,
         }),
       });
 
-      if (res.ok && res.data?.success) {
+      if (res.ok && res.data?.success && res.data?.emailSent) {
         setResendCountdown(60);
         setOtpInputs(['', '', '', '', '', '']);
         setSuccessMsg('Mã xác thực mới đã được gửi vào hòm thư email của bạn.');
         setTimeout(() => setSuccessMsg(''), 5000);
         otpRefs.current[0]?.focus();
       } else {
-        // Nếu không gửi được email, cho phép kích hoạt ngay
-        setSuccessMsg('Bạn có thể nhấn "Kích hoạt trực tiếp ngay" ở bên dưới để hoàn tất đăng ký.');
+        setErrorMsg(
+          res.data?.error ||
+            'Không thể gửi mã xác thực qua email. Vui lòng kiểm tra lại dịch vụ gửi thư hoặc thử lại sau.'
+        );
       }
     } catch (err: any) {
-      setErrorMsg('Không thể kết nối máy chủ gửi mã. Bạn có thể nhấn kích hoạt trực tiếp.');
+      setErrorMsg(err?.message || 'Không thể kết nối máy chủ gửi mã. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Kích hoạt trực tiếp khi không nhận được email hoặc môi trường serverless
-  const handleDirectActivate = async () => {
-    if (!pendingReg) return;
-    setLoading(true);
-    setErrorMsg('');
-    try {
-      const registeredUser = await finalizeCreateUserAccount(
-        pendingReg.email,
-        pendingReg.fullName,
-        pendingReg.passwordHash,
-        pendingReg.rawPassword
-      );
-
-      setSuccessMsg('Kích hoạt tài khoản thành công! Đang chuyển vào trang học...');
-      setTimeout(() => {
-        onLoginSuccess(registeredUser);
-        onClose();
-      }, 700);
-    } catch (err: any) {
-      setErrorMsg('Có lỗi xảy ra khi kích hoạt tài khoản. Vui lòng thử lại.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Bước 1: Gửi yêu cầu đăng ký ➔ Server gửi mã 6 số về hòm thư Email (hoặc kích hoạt ngay)
+  // Bước 1 (Đăng ký): Gửi yêu cầu đăng ký ➔ BẮT BUỘC Server gửi mã 6 số về Email
   const handleInitiateRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -340,6 +338,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         body: JSON.stringify({
           email: cleanEmail,
           fullName: cleanName,
+          type: 'register',
         }),
       });
 
@@ -356,7 +355,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setRegisterStep('otp');
         setResendCountdown(60);
         setOtpInputs(['', '', '', '', '', '']);
-        setSuccessMsg('Hệ thống đã gửi mã xác thực 6 chữ số vào hòm thư email của bạn.');
+        setSuccessMsg(`Hệ thống đã gửi mã xác thực 6 chữ số vào hòm thư ${cleanEmail}. Vui lòng kiểm tra email để lấy mã.`);
 
         setTimeout(() => {
           otpRefs.current[0]?.focus();
@@ -364,33 +363,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         return;
       }
 
-      // Nếu máy chủ chưa cấu hình gửi thư tự động (emailSent: false) hoặc chạy môi trường Serverless:
-      // Tự động kích hoạt tài khoản an toàn ngay lập tức cho người dùng, không để người dùng bị kẹt lại!
-      const user = await finalizeCreateUserAccount(cleanEmail, cleanName, hashed, cleanPass);
-      setSuccessMsg('Đăng ký tài khoản thành công! Đang chuyển vào ứng dụng...');
-      setTimeout(() => {
-        onLoginSuccess(user);
-        onClose();
-      }, 700);
+      // Nếu không gửi được email, thông báo lỗi cụ thể - BẮT BUỘC PHẢI NHẬN ĐƯỢC MÃ TỪ EMAIL
+      const errorDetail =
+        res.data?.error ||
+        'Không thể gửi mã xác thực tới email của bạn. Vui lòng kiểm tra lại địa chỉ email hoặc đảm bảo dịch vụ gửi thư SMTP trên máy chủ đã được cấu hình.';
+      setErrorMsg(errorDetail);
     } catch (err: any) {
       console.warn('Lỗi xử lý đăng ký:', err);
-      try {
-        const fallbackHashed = await hashPassword(cleanPass);
-        const user = await finalizeCreateUserAccount(cleanEmail, cleanName, fallbackHashed, cleanPass);
-        setSuccessMsg('Đăng ký tài khoản thành công! Đang chuyển vào ứng dụng...');
-        setTimeout(() => {
-          onLoginSuccess(user);
-          onClose();
-        }, 700);
-      } catch (fallbackErr) {
-        setErrorMsg('Có lỗi xảy ra khi tạo tài khoản. Vui lòng kiểm tra lại thông tin.');
-      }
+      setErrorMsg(err?.message || 'Có lỗi xảy ra khi kết nối máy chủ gửi mã xác thực. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Bước 2: Kiểm tra mã 6 số từ email ➔ Kích hoạt tạo tài khoản
+  // Bước 2 (Đăng ký): Kiểm tra mã 6 số từ email ➔ Kích hoạt tạo tài khoản
   const handleVerifyOtpAndCreateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
@@ -443,6 +429,165 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }, 700);
     } catch (err: any) {
       setErrorMsg(err.message || 'Lỗi trong quá trình kích hoạt tài khoản.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ==========================================
+  // XỬ LÝ QUÊN MẬT KHẨU (FORGOT PASSWORD)
+  // ==========================================
+
+  // Bước 1 (Quên mật khẩu): Gửi mã khôi phục 6 số về Email
+  const handleSendForgotOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    const cleanEmail = forgotEmail.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMsg('Vui lòng nhập địa chỉ email hợp lệ.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Kiểm tra tài khoản có tồn tại không
+      const localUsersJson = localStorage.getItem('app_registered_users');
+      const localUsers: any[] = localUsersJson ? JSON.parse(localUsersJson) : [];
+      const userExists = localUsers.some((u) => u.email === cleanEmail);
+
+      if (!userExists && !isSupabaseConfigured && cleanEmail !== ADMIN_EMAIL) {
+        setErrorMsg('Không tìm thấy tài khoản nào khớp với email này trong hệ thống.');
+        setLoading(false);
+        return;
+      }
+
+      const res = await safeFetchApi('/api/auth/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          type: 'forgot',
+        }),
+      });
+
+      if (res.ok && res.data?.success && res.data?.emailSent) {
+        setForgotStep('reset');
+        setResendCountdown(60);
+        setOtpInputs(['', '', '', '', '', '']);
+        setSuccessMsg(`Mã khôi phục 6 chữ số đã được gửi tới ${cleanEmail}. Vui lòng kiểm tra email của bạn.`);
+        setTimeout(() => {
+          otpRefs.current[0]?.focus();
+        }, 150);
+        return;
+      }
+
+      const errorDetail =
+        res.data?.error ||
+        'Không thể gửi mã khôi phục tới email. Vui lòng kiểm tra cấu hình SMTP trên máy chủ hoặc thử lại sau.';
+      setErrorMsg(errorDetail);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Có lỗi xảy ra khi gửi yêu cầu khôi phục mật khẩu.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Bước 2 (Quên mật khẩu): Nhập mã 6 số + Mật khẩu mới ➔ Đặt lại mật khẩu
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    const cleanEmail = forgotEmail.trim().toLowerCase();
+    const enteredOtp = otpInputs.join('').trim();
+    const cleanNewPass = newPassword.trim();
+
+    if (enteredOtp.length < 6) {
+      setErrorMsg('Vui lòng nhập đủ 6 chữ số mã xác thực nhận được từ email.');
+      return;
+    }
+
+    if (cleanNewPass.length < 6) {
+      setErrorMsg('Mật khẩu mới phải có tối thiểu 6 ký tự.');
+      return;
+    }
+
+    if (cleanNewPass !== confirmPassword.trim()) {
+      setErrorMsg('Xác nhận mật khẩu mới không khớp. Vui lòng nhập lại.');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const res = await safeFetchApi('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: cleanEmail,
+          otp: enteredOtp,
+          rawPassword: cleanNewPass,
+        }),
+      });
+
+      if (!res.ok || !res.data?.success) {
+        setErrorMsg(res.data?.error || 'Mã xác thực không chính xác hoặc đã hết hạn.');
+        setLoading(false);
+        return;
+      }
+
+      // Mã hóa mật khẩu mới và cập nhật trong localStorage
+      const newHash = await hashPassword(cleanNewPass);
+      const localUsersJson = localStorage.getItem('app_registered_users');
+      const localUsers: any[] = localUsersJson ? JSON.parse(localUsersJson) : [];
+      const userIdx = localUsers.findIndex((u) => u.email === cleanEmail);
+
+      let updatedProfile: Profile | null = null;
+      if (userIdx >= 0) {
+        localUsers[userIdx].passwordHash = newHash;
+        localUsers[userIdx].password = newHash;
+        localStorage.setItem('app_registered_users', JSON.stringify(localUsers));
+
+        const u = localUsers[userIdx];
+        updatedProfile = {
+          id: u.id,
+          email: u.email,
+          full_name: u.full_name || cleanEmail.split('@')[0],
+          avatar_url: u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}`,
+          role: u.role || (cleanEmail === ADMIN_EMAIL ? 'admin' : 'user'),
+          is_vip: u.is_vip ?? (cleanEmail === ADMIN_EMAIL),
+          created_at: u.created_at || new Date().toISOString(),
+        };
+      } else {
+        // Tạo profile mới nếu chưa có
+        updatedProfile = {
+          id: 'usr-' + Date.now(),
+          email: cleanEmail,
+          full_name: cleanEmail.split('@')[0],
+          avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}`,
+          role: cleanEmail === ADMIN_EMAIL ? 'admin' : 'user',
+          is_vip: cleanEmail === ADMIN_EMAIL,
+          created_at: new Date().toISOString(),
+        };
+        localUsers.push({
+          ...updatedProfile,
+          passwordHash: newHash,
+        });
+        localStorage.setItem('app_registered_users', JSON.stringify(localUsers));
+      }
+
+      setSuccessMsg('Đặt lại mật khẩu thành công! Đang đăng nhập vào ứng dụng...');
+      setTimeout(() => {
+        if (updatedProfile) {
+          onLoginSuccess(updatedProfile);
+        }
+        onClose();
+      }, 800);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Có lỗi xảy ra khi đặt lại mật khẩu.');
     } finally {
       setLoading(false);
     }
@@ -508,7 +653,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         const foundUser = localUsers.find((u) => u.email === cleanEmail);
 
         if (!foundUser) {
-          // Bắt buộc tất cả tài khoản (kể cả hungpv2172002@gmail.com) phải đăng ký trước
           setErrorMsg(
             'Tài khoản này chưa được đăng ký trong hệ thống. Vui lòng bấm sang tab "Đăng ký" để tạo tài khoản và nhận mã xác thực qua email.'
           );
@@ -523,7 +667,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         );
 
         if (!isPasswordCorrect) {
-          setErrorMsg('Mật khẩu không chính xác. Vui lòng kiểm tra lại.');
+          setErrorMsg('Mật khẩu không chính xác. Vui lòng kiểm tra lại hoặc bấm "Quên mật khẩu?" bên dưới.');
           setLoading(false);
           return;
         }
@@ -568,7 +712,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </button>
 
         <div className="p-6 sm:p-8">
-          {/* MÀN HÌNH NHẬP MÃ XÁC THỰC OTP TỪ HÒM THƯ EMAIL */}
+          {/* ==================================================== */}
+          {/* MÀN HÌNH NHẬP MÃ OTP ĐĂNG KÝ (BẮT BUỘC TỪ EMAIL)   */}
+          {/* ==================================================== */}
           {mode === 'register' && registerStep === 'otp' ? (
             <div>
               {/* Nút quay lại bước trước */}
@@ -590,26 +736,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <MailCheck className="w-7 h-7" />
                 </div>
                 <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
-                  Kiểm tra email của bạn
+                  Xác thực mã từ Email
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-relaxed">
-                  Mã xác thực gồm 6 chữ số đã được gửi tới:
+                  Mã xác thực gồm 6 chữ số đã được gửi tới hộp thư:
                   <br />
                   <strong className="text-slate-800 font-semibold text-sm">{pendingReg?.email}</strong>
                 </p>
               </div>
 
-              {/* Hướng dẫn kiểm tra hòm thư (KHÔNG hiển thị mã code lên web) */}
+              {/* Hướng dẫn kiểm tra hòm thư */}
               <div className="mb-5 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600 space-y-1">
                 <div className="flex items-center gap-1.5 font-semibold text-slate-800 mb-1">
                   <Mail className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Mở hòm thư email để lấy mã:</span>
+                  <span>Hướng dẫn lấy mã:</span>
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  • Kiểm tra thư mục <strong>Hộp thư đến (Inbox)</strong>.
+                  • Mở email và kiểm tra <strong>Hộp thư đến (Inbox)</strong>.
                 </p>
                 <p className="text-[11px] text-slate-500">
-                  • Nếu chưa thấy sau 1-2 phút, hãy kiểm tra thêm mục <strong>Thư rác (Spam)</strong> hoặc <strong>Quảng cáo (Promotions)</strong>.
+                  • Nếu chưa thấy sau 1 phút, vui lòng kiểm tra thêm thư mục <strong>Thư rác (Spam)</strong> hoặc <strong>Quảng cáo</strong>.
                 </p>
               </div>
 
@@ -668,7 +814,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   )}
                 </div>
 
-                {/* Nút kích hoạt tài khoản */}
+                {/* Nút xác nhận & kích hoạt */}
                 <button
                   type="submit"
                   disabled={loading || otpInputs.join('').length < 6}
@@ -682,26 +828,212 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   ) : (
                     <>
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>Xác nhận & Kích hoạt tài khoản</span>
+                      <span>Xác nhận & Hoàn tất đăng ký</span>
                     </>
                   )}
                 </button>
-
-                {/* Nút kích hoạt trực tiếp nếu không nhận được email */}
-                <div className="pt-2 text-center border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={handleDirectActivate}
-                    disabled={loading}
-                    className="text-xs text-slate-500 hover:text-indigo-600 font-medium cursor-pointer transition-colors"
-                  >
-                    Chưa nhận được mã email? <span className="font-semibold text-indigo-600 underline">Kích hoạt trực tiếp ngay</span>
-                  </button>
-                </div>
               </form>
             </div>
+          ) : mode === 'forgot' ? (
+            /* ==================================================== */
+            /* MÀN HÌNH QUÊN MẬT KHẨU (KHÔI PHỤC BẰNG MÃ EMAIL)    */
+            /* ==================================================== */
+            <div>
+              {/* Nút quay lại đăng nhập */}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                }}
+                className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 font-semibold mb-4 cursor-pointer"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Quay lại đăng nhập</span>
+              </button>
+
+              <div className="text-center mb-6">
+                <div className="inline-flex items-center justify-center w-14 h-14 rounded-3xl bg-indigo-50 text-indigo-600 mb-3 shadow-inner">
+                  <KeyRound className="w-7 h-7" />
+                </div>
+                <h2 className="text-xl sm:text-2xl font-bold text-slate-900">
+                  {forgotStep === 'email' ? 'Khôi phục mật khẩu' : 'Đặt lại mật khẩu mới'}
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-relaxed">
+                  {forgotStep === 'email'
+                    ? 'Nhập email tài khoản của bạn để nhận mã xác thực 6 số khôi phục mật khẩu'
+                    : `Nhập mã 6 số gửi tới ${forgotEmail} và thiết lập mật khẩu mới`}
+                </p>
+              </div>
+
+              {/* Thông báo lỗi */}
+              {errorMsg && (
+                <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-2.5 text-xs text-rose-700 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+
+              {/* Thông báo thành công */}
+              {successMsg && (
+                <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-2.5 text-xs text-emerald-800 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
+                  <span>{successMsg}</span>
+                </div>
+              )}
+
+              {/* BƯỚC 1: Nhập email cần khôi phục */}
+              {forgotStep === 'email' ? (
+                <form onSubmit={handleSendForgotOtp} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Địa chỉ Email đăng ký
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="email"
+                        required
+                        value={forgotEmail}
+                        onChange={(e) => setForgotEmail(e.target.value)}
+                        placeholder="your-email@gmail.com"
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 outline-hidden transition-all text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-bold rounded-xl shadow-md hover:shadow-indigo-200 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm mt-2"
+                  >
+                    {loading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Đang gửi mã khôi phục về email...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4" />
+                        <span>Gửi mã khôi phục về Email</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              ) : (
+                /* BƯỚC 2: Nhập OTP 6 số + Mật khẩu mới */
+                <form onSubmit={handleResetPassword} className="space-y-4">
+                  {/* Nhập mã OTP 6 số */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider text-center mb-2">
+                      Nhập mã xác thực 6 số từ email
+                    </label>
+                    <div className="flex justify-center gap-2 sm:gap-2.5 mb-3">
+                      {otpInputs.map((digit, idx) => (
+                        <input
+                          key={idx}
+                          ref={(el) => {
+                            otpRefs.current[idx] = el;
+                          }}
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={digit}
+                          onChange={(e) => handleOtpChange(idx, e.target.value)}
+                          onKeyDown={(e) => handleOtpKeyDown(idx, e)}
+                          className="w-10 h-12 sm:w-11 sm:h-13 text-center text-lg font-bold font-mono bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-hidden transition-all text-slate-900 shadow-2xs"
+                        />
+                      ))}
+                    </div>
+
+                    <div className="text-center mb-3">
+                      {resendCountdown > 0 ? (
+                        <span className="text-xs text-slate-400">
+                          Gửi lại mã sau <strong className="text-slate-600">{resendCountdown}s</strong>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleResendOtp}
+                          disabled={loading}
+                          className="text-xs text-indigo-600 hover:text-indigo-800 font-bold underline underline-offset-2 cursor-pointer inline-flex items-center gap-1"
+                        >
+                          <Send className="w-3 h-3" />
+                          <span>Gửi lại mã khôi phục</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Mật khẩu mới */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Mật khẩu mới
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        required
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Tối thiểu 6 ký tự bảo mật"
+                        className="w-full pl-10 pr-11 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 outline-hidden transition-all text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                        aria-label={showNewPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                      >
+                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Xác nhận mật khẩu mới */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Xác nhận mật khẩu mới
+                    </label>
+                    <div className="relative">
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        required
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Nhập lại mật khẩu mới"
+                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 outline-hidden transition-all text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading || otpInputs.join('').length < 6}
+                    className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md hover:shadow-indigo-200 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm mt-2"
+                  >
+                    {loading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Đang đặt lại mật khẩu...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>Đặt lại mật khẩu & Đăng nhập</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
+            </div>
           ) : (
-            /* MÀN HÌNH FORM ĐĂNG NHẬP / ĐĂNG KÝ THÔNG THƯỜNG */
+            /* ==================================================== */
+            /* MÀN HÌNH FORM ĐĂNG NHẬP / ĐĂNG KÝ TIÊU CHUẨN        */
+            /* ==================================================== */
             <div>
               {/* Header icon & title */}
               <div className="text-center mb-6">
@@ -714,7 +1046,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <p className="text-xs sm:text-sm text-slate-500 mt-1">
                   {mode === 'login'
                     ? 'Đăng nhập để lưu trữ tiến độ, bài dịch và điểm số của bạn'
-                    : 'Đăng ký bằng email và nhận mã xác thực để kích hoạt tài khoản'}
+                    : 'Nhập thông tin để nhận mã xác thực 6 chữ số gửi qua Email'}
                 </p>
               </div>
 
@@ -816,9 +1148,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                 {/* Mật khẩu */}
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Mật khẩu
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                      Mật khẩu
+                    </label>
+                    {mode === 'login' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMode('forgot');
+                          setForgotStep('email');
+                          setForgotEmail(email);
+                          setErrorMsg('');
+                          setSuccessMsg('');
+                        }}
+                        className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold hover:underline cursor-pointer"
+                      >
+                        Quên mật khẩu?
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
@@ -883,7 +1232,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         setErrorMsg('');
                         setSuccessMsg('');
                       }}
-                      className="text-indigo-600 hover:text-indigo-800 font-bold underline underline-offset-2"
+                      className="text-indigo-600 hover:text-indigo-800 font-bold underline underline-offset-2 cursor-pointer"
                     >
                       Đăng ký ngay
                     </button>
@@ -898,7 +1247,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                         setErrorMsg('');
                         setSuccessMsg('');
                       }}
-                      className="text-indigo-600 hover:text-indigo-800 font-bold underline underline-offset-2"
+                      className="text-indigo-600 hover:text-indigo-800 font-bold underline underline-offset-2 cursor-pointer"
                     >
                       Đăng nhập tại đây
                     </button>
