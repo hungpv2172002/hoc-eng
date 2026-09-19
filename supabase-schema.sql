@@ -552,3 +552,27 @@ VALUES
     ],
     CURRENT_DATE
 );
+
+-- ==============================================================================
+-- 11. BẢNG app_settings (Cố định tên app, icon và kênh liên hệ Facebook/TikTok)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.app_settings (
+    id TEXT PRIMARY KEY DEFAULT 'default',
+    value JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "app_settings_select_policy" ON public.app_settings;
+CREATE POLICY "app_settings_select_policy" ON public.app_settings
+    FOR SELECT TO authenticated, anon, service_role
+    USING (true);
+
+DROP POLICY IF EXISTS "app_settings_all_policy" ON public.app_settings;
+CREATE POLICY "app_settings_all_policy" ON public.app_settings
+    FOR ALL TO authenticated, anon, service_role
+    USING (true)
+    WITH CHECK (true);
+
+GRANT ALL ON TABLE public.app_settings TO postgres, anon, authenticated, service_role;

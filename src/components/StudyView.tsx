@@ -28,6 +28,8 @@ import {
   MessageSquare,
   Lock,
   Layers,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -125,6 +127,29 @@ export const StudyView: React.FC<StudyViewProps> = ({
     setCurrentIndex(0);
     setUserAnswer('');
     setResultState('idle');
+  };
+
+  // 4. Quản lý Hiển thị / Ẩn gợi ý từ vựng cho người học
+  const [showHints, setShowHints] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('translation_show_hints');
+        if (saved !== null) {
+          return saved === 'true';
+        }
+      } catch (e) {}
+    }
+    return true; // Mặc định mở gợi ý
+  });
+
+  const handleToggleHints = () => {
+    setShowHints((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('translation_show_hints', String(next));
+      } catch (e) {}
+      return next;
+    });
   };
 
   const isVip = profile?.is_vip ?? false;
@@ -547,18 +572,44 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
             {/* Câu tiếng Việt in đậm */}
             <div className="mb-5">
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
                 <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
                   Dịch sang tiếng Anh:
                 </span>
 
-                {/* Nút Nghe mẫu kèm tốc độ */}
-                <AudioButton
-                  text={currentQuestion.answers[0]}
-                  speed={audioSpeed}
-                  onSpeedChange={handleSpeedChange}
-                  size="sm"
-                />
+                <div className="flex items-center gap-2">
+                  {/* Nút bật / tắt gợi ý nhanh */}
+                  <button
+                    type="button"
+                    onClick={handleToggleHints}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                      showHints
+                        ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200 shadow-2xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200'
+                    }`}
+                    title={showHints ? 'Bấm để ẩn gợi ý (Tự thử thách ghi nhớ)' : 'Bấm để hiển thị gợi ý từ vựng'}
+                  >
+                    {showHints ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Ẩn gợi ý</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5 text-indigo-600" />
+                        <span className="text-indigo-700">Hiện gợi ý</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Nút Nghe mẫu kèm tốc độ */}
+                  <AudioButton
+                    text={currentQuestion.answers[0]}
+                    speed={audioSpeed}
+                    onSpeedChange={handleSpeedChange}
+                    size="sm"
+                  />
+                </div>
               </div>
 
               <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 leading-snug">
@@ -566,20 +617,57 @@ export const StudyView: React.FC<StudyViewProps> = ({
               </h2>
             </div>
 
-            {/* Hộp badge gợi ý từ vựng */}
-            <div className="mb-6 p-4 bg-amber-50/80 border border-amber-200/90 rounded-2xl flex items-start gap-3 shadow-2xs">
-              <div className="p-1.5 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5">
-                <Lightbulb className="w-4 h-4" />
+            {/* Hộp gợi ý từ vựng (Hiển thị hoặc Ẩn) */}
+            {showHints ? (
+              <div className="mb-6 p-4 bg-amber-50/80 border border-amber-200/90 rounded-2xl flex items-start justify-between gap-3 shadow-2xs transition-all animate-in fade-in">
+                <div className="flex items-start gap-3 flex-1">
+                  <div className="p-1.5 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5">
+                    <Lightbulb className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-amber-900 block mb-0.5 uppercase tracking-wide">
+                      Gợi ý từ vựng & cấu trúc:
+                    </span>
+                    <p className="text-xs sm:text-sm text-amber-900 font-medium leading-relaxed">
+                      {currentQuestion.hints}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleHints}
+                  className="shrink-0 p-1.5 text-amber-700 hover:text-amber-950 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer text-xs flex items-center gap-1 font-semibold"
+                  title="Ẩn gợi ý để tự thử thách"
+                >
+                  <EyeOff className="w-4 h-4" />
+                  <span className="hidden sm:inline">Ẩn</span>
+                </button>
               </div>
-              <div>
-                <span className="text-xs font-bold text-amber-900 block mb-0.5 uppercase tracking-wide">
-                  Gợi ý từ vựng & cấu trúc:
-                </span>
-                <p className="text-xs sm:text-sm text-amber-900 font-medium leading-relaxed">
-                  {currentQuestion.hints}
-                </p>
+            ) : (
+              <div className="mb-6 p-3.5 bg-slate-50/80 border border-dashed border-slate-300 rounded-2xl flex items-center justify-between gap-3 transition-all hover:bg-slate-100/60 animate-in fade-in">
+                <div className="flex items-center gap-2.5">
+                  <span className="p-1.5 bg-slate-200/80 text-slate-500 rounded-xl">
+                    <Lightbulb className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <span className="text-xs font-bold text-slate-700 block">
+                      Gợi ý từ vựng đang được ẩn
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      Tự thử thách khả năng ghi nhớ từ vựng và cấu trúc
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleHints}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-700 font-bold rounded-xl border border-indigo-200 shadow-2xs hover:border-indigo-300 transition-all text-xs cursor-pointer active:scale-95"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Hiện gợi ý</span>
+                </button>
               </div>
-            </div>
+            )}
 
             {/* Form nhập câu trả lời tiếng Anh */}
             <form onSubmit={handleCheck} className="space-y-4">

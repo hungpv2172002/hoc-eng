@@ -1070,10 +1070,10 @@ var memoryQuestionsStore = INITIAL_QUESTIONS.map((q, i) => ({
 }));
 var SETTINGS_FILE = path.join(process.cwd(), "app-settings.json");
 var appSettings = {
-  appName: "Daily Translation",
-  appSubtitle: "D\u1ECBch c\xE2u m\u1ED7i ng\xE0y k\xE8m t\u1EEB v\u1EF1ng g\u1EE3i \xFD",
-  appIcon: "BookOpen",
-  appIconType: "lucide",
+  appName: "Dịch Mỗi Ngày",
+  appSubtitle: "Dịch câu mỗi ngày kèm từ vựng gợi ý",
+  appIcon: "🎯",
+  appIconType: "emoji",
   contactEmail: "hungpv2172002@gmail.com",
   contactFacebook: "https://facebook.com",
   contactTiktok: "https://tiktok.com"
@@ -1084,9 +1084,14 @@ try {
     if (saved && typeof saved === "object") {
       appSettings = { ...appSettings, ...saved };
     }
+  } else if (fs.existsSync("/tmp/app-settings.json")) {
+    const savedTmp = JSON.parse(fs.readFileSync("/tmp/app-settings.json", "utf-8"));
+    if (savedTmp && typeof savedTmp === "object") {
+      appSettings = { ...appSettings, ...savedTmp };
+    }
   }
 } catch (e) {
-  console.warn("Kh\xF4ng th\u1EC3 \u0111\u1ECDc file app-settings.json:", e);
+  console.warn("Không thể đọc file app-settings.json:", e);
 }
 function getDailyRotatedQuestions(allQuestions, dateStr) {
   if (!allQuestions || allQuestions.length === 0) return [];
@@ -1372,13 +1377,28 @@ app.get(["/api/questions", "/questions"], async (req, res) => {
     source
   });
 });
-app.get(["/api/settings", "/settings"], (req, res) => {
+app.get(["/api/settings", "/settings"], async (req, res) => {
+  if (supabaseAdmin) {
+    try {
+      const { data: dbData } = await supabaseAdmin
+        .from("app_settings")
+        .select("value")
+        .eq("id", "default")
+        .maybeSingle();
+      if (dbData?.value && typeof dbData.value === "object") {
+        appSettings = { ...appSettings, ...dbData.value };
+      }
+    } catch (e) {
+      // Tiếp tục nếu bảng chưa tồn tại
+    }
+  }
+
   return res.json({
     success: true,
     settings: appSettings
   });
 });
-app.post(["/api/settings", "/settings"], (req, res) => {
+app.post(["/api/settings", "/settings"], async (req, res) => {
   try {
     const {
       appName,
@@ -1413,11 +1433,26 @@ app.post(["/api/settings", "/settings"], (req, res) => {
     try {
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify(appSettings, null, 2), "utf-8");
     } catch (e) {
-      console.warn("Kh\xF4ng th\u1EC3 ghi file app-settings.json:", e);
+      try {
+        fs.writeFileSync("/tmp/app-settings.json", JSON.stringify(appSettings, null, 2), "utf-8");
+      } catch (e2) {}
     }
+
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.from("app_settings").upsert({
+          id: "default",
+          value: appSettings,
+          updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      } catch (dbErr) {
+        console.warn("Lỗi lưu app_settings vào Supabase:", dbErr);
+      }
+    }
+
     return res.json({
       success: true,
-      message: "\u0110\xE3 l\u01B0u thay \u0111\u1ED5i c\xE0i \u0111\u1EB7t \u1EE9ng d\u1EE5ng th\xE0nh c\xF4ng!",
+      message: "Đã lưu thay đổi cài đặt ứng dụng thành công!",
       settings: appSettings
     });
   } catch (err) {
@@ -1461,30 +1496,32 @@ app.get("/download-schema", (req, res) => {
 });
 var otpMemoryStore = /* @__PURE__ */ new Map();
 function createMailTransporter() {
-  const host = process.env.SMTP_HOST;
+  const host = process.env.SMTP_HOST || "smtp.gmail.com";
   const port = parseInt(process.env.SMTP_PORT || "587", 10);
-  const user = process.env.SMTP_USER || process.env.GMAIL_USER;
-  const pass = process.env.SMTP_PASS || process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD;
-  if (host && user && pass) {
-    return nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: { user, pass }
-    });
+  const user = (process.env.SMTP_USER || process.env.GMAIL_USER || "").trim();
+  const rawPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD || "";
+  const pass = rawPass.replace(/\s+/g, "").trim();
+  if (!user || !pass) {
+    return null;
   }
-  if (user && pass && user.includes("@gmail.com")) {
+  if (host.includes("gmail.com") || user.includes("@gmail.com")) {
     return nodemailer.createTransport({
       service: "gmail",
       auth: { user, pass }
     });
   }
-  return null;
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass }
+  });
 }
 app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
   try {
-    const { email, fullName } = req.body || {};
+    const { email, fullName, type = "register" } = req.body || {};
     const cleanEmail = (email || "").trim().toLowerCase();
+    const otpType = type === "forgot" ? "forgot" : "register";
     if (!cleanEmail || !cleanEmail.includes("@")) {
       return res.status(400).json({ success: false, error: "\u0110\u1ECBa ch\u1EC9 email kh\xF4ng h\u1EE3p l\u1EC7." });
     }
@@ -1492,7 +1529,8 @@ app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
     const otp = otpNumber.toString();
     otpMemoryStore.set(cleanEmail, {
       otp,
-      expiresAt: Date.now() + 10 * 60 * 1e3
+      expiresAt: Date.now() + 10 * 60 * 1e3,
+      type: otpType
     });
     const transporter = createMailTransporter();
     let emailSent = false;
@@ -1500,10 +1538,15 @@ app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
     if (transporter) {
       try {
         const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || `Daily Translation <noreply@dailytranslation.app>`;
+        const isForgot = otpType === "forgot";
+        const emailSubject = isForgot ? `[Daily Translation] M\xE3 kh\xF4i ph\u1EE5c m\u1EADt kh\u1EA9u: ${otp}` : `[Daily Translation] M\xE3 x\xE1c th\u1EF1c \u0111\u0103ng k\xFD t\xE0i kho\u1EA3n: ${otp}`;
+        const greetingName = fullName || cleanEmail.split("@")[0];
+        const actionText = isForgot ? "B\u1EA1n (ho\u1EB7c ai \u0111\xF3) v\u1EEBa y\xEAu c\u1EA7u <strong>kh\xF4i ph\u1EE5c m\u1EADt kh\u1EA9u</strong> t\xE0i kho\u1EA3n h\u1ECDc t\u1EADp tr\xEAn <strong>Daily Translation</strong>." : "B\u1EA1n \u0111ang th\u1EF1c hi\u1EC7n <strong>\u0111\u0103ng k\xFD t\xE0i kho\u1EA3n h\u1ECDc t\u1EADp</strong> tr\xEAn <strong>Daily Translation</strong>.";
+        const reminderText = isForgot ? "N\u1EBFu b\u1EA1n kh\xF4ng y\xEAu c\u1EA7u \u0111\u1EB7t l\u1EA1i m\u1EADt kh\u1EA9u, vui l\xF2ng b\u1ECF qua email n\xE0y. M\u1EADt kh\u1EA9u hi\u1EC7n t\u1EA1i c\u1EE7a b\u1EA1n v\u1EABn \u0111\u01B0\u1EE3c gi\u1EEF an to\xE0n." : "V\xEC l\xFD do an to\xE0n b\u1EA3o m\u1EADt, tuy\u1EC7t \u0111\u1ED1i kh\xF4ng chia s\u1EBB m\xE3 n\xE0y cho ng\u01B0\u1EDDi kh\xE1c.";
         await transporter.sendMail({
           from: fromAddress,
           to: cleanEmail,
-          subject: `[Daily Translation] M\xE3 x\xE1c th\u1EF1c \u0111\u0103ng k\xFD t\xE0i kho\u1EA3n: ${otp}`,
+          subject: emailSubject,
           html: `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 20px;">
               <div style="text-align: center; margin-bottom: 24px;">
@@ -1511,42 +1554,52 @@ app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
                 <p style="color: #64748b; font-size: 13px; margin-top: 4px;">Luy\u1EC7n d\u1ECBch Vi\u1EC7t \u2794 Anh m\u1ED7i ng\xE0y</p>
               </div>
               <p style="color: #334155; font-size: 15px; line-height: 1.6;">
-                Xin ch\xE0o <strong>${fullName || cleanEmail.split("@")[0]}</strong>,
+                Xin ch\xE0o <strong>${greetingName}</strong>,
               </p>
               <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-                B\u1EA1n \u0111ang th\u1EF1c hi\u1EC7n \u0111\u0103ng k\xFD t\xE0i kho\u1EA3n h\u1ECDc t\u1EADp tr\xEAn <strong>Daily Translation</strong>. D\u01B0\u1EDBi \u0111\xE2y l\xE0 m\xE3 x\xE1c th\u1EF1c 6 ch\u1EEF s\u1ED1 c\u1EE7a b\u1EA1n:
+                ${actionText} D\u01B0\u1EDBi \u0111\xE2y l\xE0 m\xE3 x\xE1c th\u1EF1c 6 ch\u1EEF s\u1ED1 c\u1EE7a b\u1EA1n:
               </p>
               <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 16px; padding: 24px; text-align: center; margin: 24px 0;">
                 <span style="font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #1e1b4b; font-family: monospace;">${otp}</span>
               </div>
               <p style="color: #64748b; font-size: 13px; line-height: 1.6;">
-                \u23F0 M\xE3 n\xE0y c\xF3 hi\u1EC7u l\u1EF1c trong v\xF2ng <strong>10 ph\xFAt</strong>. V\xEC l\xFD do an to\xE0n b\u1EA3o m\u1EADt, tuy\u1EC7t \u0111\u1ED1i kh\xF4ng chia s\u1EBB m\xE3 n\xE0y cho ng\u01B0\u1EDDi kh\xE1c.
+                \u23F0 M\xE3 n\xE0y c\xF3 hi\u1EC7u l\u1EF1c trong v\xF2ng <strong>10 ph\xFAt</strong>. ${reminderText}
               </p>
               <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8;">
-                N\u1EBFu b\u1EA1n kh\xF4ng g\u1EEDi y\xEAu c\u1EA7u n\xE0y, vui l\xF2ng b\u1ECF qua email n\xE0y.
+                Daily Translation App \u2022 H\u1EC7 th\u1ED1ng h\u1ECDc ti\u1EBFng Anh giao ti\u1EBFp th\xF4ng minh
               </div>
             </div>
           `
         });
         emailSent = true;
-        console.log(`[EMAIL OTP] \u0110\xE3 g\u1EEDi m\xE3 x\xE1c th\u1EF1c th\xE0nh c\xF4ng t\u1EDBi email: ${cleanEmail}`);
+        console.log(`[EMAIL OTP] \u0110\xE3 g\u1EEDi m\xE3 x\xE1c th\u1EF1c (${otpType}) th\xE0nh c\xF4ng t\u1EDBi email: ${cleanEmail}`);
       } catch (err) {
         console.error("L\u1ED7i g\u1EEDi email qua SMTP:", err.message);
         mailError = err.message;
       }
     } else {
-      console.log(`[EMAIL OTP (Console Log)] \u0110\xE3 t\u1EA1o m\xE3 x\xE1c th\u1EF1c g\u1EEDi cho ${cleanEmail}: ${otp}`);
+      console.log(`[EMAIL OTP (Ch\u01B0a c\u1EA5u h\xECnh SMTP)] T\u1EA1o m\xE3 x\xE1c th\u1EF1c cho ${cleanEmail}: ${otp}`);
     }
-    if (supabaseAdmin) {
-      try {
-        await supabaseAdmin.auth.signInWithOtp({ email: cleanEmail });
-      } catch (e) {
-      }
+    if (!transporter) {
+      return res.status(400).json({
+        success: false,
+        emailSent: false,
+        hasSmtpConfigured: false,
+        error: "M\xE1y ch\u1EE7 ch\u01B0a c\u1EA5u h\xECnh d\u1ECBch v\u1EE5 g\u1EEDi Email (SMTP_USER / SMTP_PASS). Vui l\xF2ng c\u1EA5u h\xECnh t\xE0i kho\u1EA3n g\u1EEDi email tr\xEAn Vercel ho\u1EB7c bi\u1EBFn m\xF4i tr\u01B0\u1EDDng."
+      });
+    }
+    if (!emailSent && mailError) {
+      return res.status(500).json({
+        success: false,
+        emailSent: false,
+        hasSmtpConfigured: true,
+        error: `Kh\xF4ng th\u1EC3 g\u1EEDi email x\xE1c th\u1EF1c: ${mailError}. Vui l\xF2ng ki\u1EC3m tra l\u1EA1i c\u1EA5u h\xECnh t\xE0i kho\u1EA3n g\u1EEDi th\u01B0.`
+      });
     }
     return res.json({
       success: true,
-      emailSent,
-      hasSmtpConfigured: !!transporter,
+      emailSent: true,
+      hasSmtpConfigured: true,
       message: "M\xE3 x\xE1c th\u1EF1c 6 ch\u1EEF s\u1ED1 \u0111\xE3 \u0111\u01B0\u1EE3c g\u1EEDi t\u1EDBi email c\u1EE7a b\u1EA1n."
     });
   } catch (err) {
@@ -1565,7 +1618,7 @@ app.post(["/api/auth/verify-otp", "/auth/verify-otp"], (req, res) => {
     if (!record) {
       return res.status(400).json({
         success: false,
-        error: 'M\xE3 x\xE1c th\u1EF1c kh\xF4ng t\u1ED3n t\u1EA1i ho\u1EB7c \u0111\xE3 \u0111\u01B0\u1EE3c s\u1EED d\u1EE5ng. Vui l\xF2ng b\u1EA5m "G\u1EEDi l\u1EA1i m\xE3".'
+        error: 'M\xE3 x\xE1c th\u1EF1c kh\xF4ng t\u1ED3n t\u1EA1i ho\u1EB7c \u0111\xE3 h\u1EBFt h\u1EA1n. Vui l\xF2ng b\u1EA5m "G\u1EEDi l\u1EA1i m\xE3".'
       });
     }
     if (Date.now() > record.expiresAt) {
@@ -1586,6 +1639,66 @@ app.post(["/api/auth/verify-otp", "/auth/verify-otp"], (req, res) => {
       success: true,
       verified: true,
       message: "X\xE1c th\u1EF1c m\xE3 email th\xE0nh c\xF4ng!"
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+app.post(["/api/auth/reset-password", "/auth/reset-password"], async (req, res) => {
+  try {
+    const { email, otp, rawPassword } = req.body || {};
+    const cleanEmail = (email || "").trim().toLowerCase();
+    const cleanOtp = (otp || "").trim();
+    if (!cleanEmail || !cleanOtp || !rawPassword) {
+      return res.status(400).json({
+        success: false,
+        error: "Vui l\xF2ng cung c\u1EA5p \u0111\u1EA7y \u0111\u1EE7 email, m\xE3 x\xE1c th\u1EF1c v\xE0 m\u1EADt kh\u1EA9u m\u1EDBi."
+      });
+    }
+    if (rawPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: "M\u1EADt kh\u1EA9u m\u1EDBi ph\u1EA3i c\xF3 \xEDt nh\u1EA5t 6 k\xFD t\u1EF1."
+      });
+    }
+    const record = otpMemoryStore.get(cleanEmail);
+    if (!record) {
+      return res.status(400).json({
+        success: false,
+        error: "M\xE3 x\xE1c th\u1EF1c kh\xF4ng t\u1ED3n t\u1EA1i ho\u1EB7c \u0111\xE3 h\u1EBFt h\u1EA1n. Vui l\xF2ng y\xEAu c\u1EA7u m\xE3 kh\xF4i ph\u1EE5c m\u1EDBi."
+      });
+    }
+    if (Date.now() > record.expiresAt) {
+      otpMemoryStore.delete(cleanEmail);
+      return res.status(400).json({
+        success: false,
+        error: "M\xE3 x\xE1c th\u1EF1c \u0111\xE3 h\u1EBFt h\u1EA1n (qu\xE1 10 ph\xFAt). Vui l\xF2ng y\xEAu c\u1EA7u g\u1EEDi l\u1EA1i m\xE3."
+      });
+    }
+    if (record.otp !== cleanOtp) {
+      return res.status(400).json({
+        success: false,
+        error: "M\xE3 x\xE1c th\u1EF1c kh\xF4ng ch\xEDnh x\xE1c. Vui l\xF2ng ki\u1EC3m tra l\u1EA1i h\xF2m th\u01B0 email c\u1EE7a b\u1EA1n."
+      });
+    }
+    if (supabaseAdmin) {
+      try {
+        const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+        const targetUser = listData?.users?.find((u) => u.email === cleanEmail);
+        if (targetUser) {
+          await supabaseAdmin.auth.admin.updateUserById(targetUser.id, {
+            password: rawPassword
+          });
+          console.log(`[Supabase Auth] \u0110\xE3 c\u1EADp nh\u1EADt m\u1EADt kh\u1EA9u m\u1EDBi cho ${cleanEmail}`);
+        }
+      } catch (supaErr) {
+        console.warn("L\u1ED7i c\u1EADp nh\u1EADt m\u1EADt kh\u1EA9u tr\xEAn Supabase:", supaErr.message);
+      }
+    }
+    otpMemoryStore.delete(cleanEmail);
+    return res.json({
+      success: true,
+      message: "\u0110\u1EB7t l\u1EA1i m\u1EADt kh\u1EA9u th\xE0nh c\xF4ng! B\u1EA1n c\xF3 th\u1EC3 \u0111\u0103ng nh\u1EADp b\u1EB1ng m\u1EADt kh\u1EA9u m\u1EDBi."
     });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });

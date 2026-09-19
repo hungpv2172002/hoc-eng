@@ -65,21 +65,26 @@ let memoryQuestionsStore: any[] = INITIAL_QUESTIONS.map((q, i) => ({
 // Cài đặt tên, biểu tượng và kênh liên lạc ứng dụng (có thể chỉnh sửa từ trang Admin)
 const SETTINGS_FILE = path.join(process.cwd(), 'app-settings.json');
 let appSettings = {
-  appName: 'Daily Translation',
+  appName: 'Dịch Mỗi Ngày',
   appSubtitle: 'Dịch câu mỗi ngày kèm từ vựng gợi ý',
-  appIcon: 'BookOpen',
-  appIconType: 'lucide',
+  appIcon: '🎯',
+  appIconType: 'emoji',
   contactEmail: 'hungpv2172002@gmail.com',
   contactFacebook: 'https://facebook.com',
   contactTiktok: 'https://tiktok.com',
 };
 
-// Đọc cài đặt đã lưu nếu có
+// Đọc cài đặt đã lưu nếu có (thử cả app-settings.json và /tmp/app-settings.json)
 try {
   if (fs.existsSync(SETTINGS_FILE)) {
     const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
     if (saved && typeof saved === 'object') {
       appSettings = { ...appSettings, ...saved };
+    }
+  } else if (fs.existsSync('/tmp/app-settings.json')) {
+    const savedTmp = JSON.parse(fs.readFileSync('/tmp/app-settings.json', 'utf-8'));
+    if (savedTmp && typeof savedTmp === 'object') {
+      appSettings = { ...appSettings, ...savedTmp };
     }
   }
 } catch (e) {
@@ -447,8 +452,23 @@ app.get(['/api/questions', '/questions'], async (req, res) => {
 
 });
 
-// Endpoint lấy cài đặt thương hiệu ứng dụng (Tên, Biểu tượng)
-app.get(['/api/settings', '/settings'], (req, res) => {
+// Endpoint lấy cài đặt thương hiệu ứng dụng (Tên, Biểu tượng & Kênh liên hệ)
+app.get(['/api/settings', '/settings'], async (req, res) => {
+  if (supabaseAdmin) {
+    try {
+      const { data: dbData } = await supabaseAdmin
+        .from('app_settings')
+        .select('value')
+        .eq('id', 'default')
+        .maybeSingle();
+      if (dbData?.value && typeof dbData.value === 'object') {
+        appSettings = { ...appSettings, ...dbData.value };
+      }
+    } catch (e) {
+      // Tiếp tục nếu bảng chưa tồn tại
+    }
+  }
+
   return res.json({
     success: true,
     settings: appSettings,
@@ -456,7 +476,7 @@ app.get(['/api/settings', '/settings'], (req, res) => {
 });
 
 // Endpoint cập nhật cài đặt ứng dụng từ trang Admin
-app.post(['/api/settings', '/settings'], (req, res) => {
+app.post(['/api/settings', '/settings'], async (req, res) => {
   try {
     const {
       appName,
@@ -490,11 +510,26 @@ app.post(['/api/settings', '/settings'], (req, res) => {
       appSettings.contactTiktok = contactTiktok.trim();
     }
 
-    // Ghi vào file disk
+    // 1. Ghi vào file disk
     try {
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify(appSettings, null, 2), 'utf-8');
     } catch (e) {
-      console.warn('Không thể ghi file app-settings.json:', e);
+      try {
+        fs.writeFileSync('/tmp/app-settings.json', JSON.stringify(appSettings, null, 2), 'utf-8');
+      } catch (e2) {}
+    }
+
+    // 2. Đồng bộ lên Supabase nếu có kết nối
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.from('app_settings').upsert({
+          id: 'default',
+          value: appSettings,
+          updated_at: new Date().toISOString(),
+        });
+      } catch (dbErr) {
+        console.warn('Lỗi lưu app_settings vào Supabase:', dbErr);
+      }
     }
 
     return res.json({
@@ -560,29 +595,31 @@ interface StoredOtpRecord {
 const otpMemoryStore = new Map<string, StoredOtpRecord>();
 
 function createMailTransporter() {
-  const host = process.env.SMTP_HOST;
+  const host = process.env.SMTP_HOST || 'smtp.gmail.com';
   const port = parseInt(process.env.SMTP_PORT || '587', 10);
-  const user = process.env.SMTP_USER || process.env.GMAIL_USER;
-  const pass = process.env.SMTP_PASS || process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD;
+  const user = (process.env.SMTP_USER || process.env.GMAIL_USER || '').trim();
+  // Loại bỏ toàn bộ khoảng trắng trong mật khẩu (Google App Password thường hiển thị dạng "xxxx xxxx xxxx xxxx")
+  const rawPass = process.env.SMTP_PASS || process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD || '';
+  const pass = rawPass.replace(/\s+/g, '').trim();
 
-  if (host && user && pass) {
-    return nodemailer.createTransport({
-      host,
-      port,
-      secure: port === 465,
-      auth: { user, pass },
-    });
+  if (!user || !pass) {
+    return null;
   }
 
-  // Nếu dùng Gmail
-  if (user && pass && user.includes('@gmail.com')) {
+  // Nếu host là smtp.gmail.com hoặc email là gmail
+  if (host.includes('gmail.com') || user.includes('@gmail.com')) {
     return nodemailer.createTransport({
       service: 'gmail',
       auth: { user, pass },
     });
   }
 
-  return null;
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  });
 }
 
 // Endpoint gửi mã xác thực 6 chữ số đến hộp thư Email (Đăng ký & Quên mật khẩu)

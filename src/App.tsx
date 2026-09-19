@@ -13,10 +13,10 @@ import { FooterContact } from './components/FooterContact';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AppSettings = {
-  appName: 'Daily Translation',
+  appName: 'Dịch Mỗi Ngày',
   appSubtitle: 'Dịch câu mỗi ngày kèm từ vựng gợi ý',
-  appIcon: 'BookOpen',
-  appIconType: 'lucide',
+  appIcon: '🎯',
+  appIconType: 'emoji',
   contactEmail: 'hungpv2172002@gmail.com',
   contactFacebook: 'https://facebook.com',
   contactTiktok: 'https://tiktok.com',
@@ -62,11 +62,26 @@ export default function App() {
   // Ngày hiện tại
   const [todayDateString] = useState<string>(() => new Date().toISOString().split('T')[0]);
 
-  // Cài đặt tên và biểu tượng ứng dụng
+  // Cài đặt tên và biểu tượng ứng dụng (Ưu tiên đọc thêm app_contact_settings để không bao giờ bị mất link liên hệ)
   const [settings, setSettings] = useState<AppSettings>(() => {
+    let base = { ...DEFAULT_SETTINGS };
     try {
       const saved = localStorage.getItem('app_custom_settings');
-      if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+      if (saved) {
+        base = { ...base, ...JSON.parse(saved) };
+      }
+      const savedContacts = localStorage.getItem('app_contact_settings');
+      if (savedContacts) {
+        const parsedContacts = JSON.parse(savedContacts);
+        if (parsedContacts.contactEmail) base.contactEmail = parsedContacts.contactEmail;
+        if (parsedContacts.contactFacebook !== undefined && parsedContacts.contactFacebook !== '') {
+          base.contactFacebook = parsedContacts.contactFacebook;
+        }
+        if (parsedContacts.contactTiktok !== undefined && parsedContacts.contactTiktok !== '') {
+          base.contactTiktok = parsedContacts.contactTiktok;
+        }
+      }
+      return base;
     } catch (e) {}
     return DEFAULT_SETTINGS;
   });
@@ -121,20 +136,72 @@ export default function App() {
     }
   }, []);
 
-  // 1.1 Tải cài đặt thương hiệu ứng dụng (Tên & Biểu tượng)
+  // 1.1 Tải cài đặt thương hiệu ứng dụng (Tên, Biểu tượng & Kênh liên hệ)
   useEffect(() => {
     async function loadSettings() {
+      // 1. Thử tải từ bảng app_settings trên Supabase nếu đã cấu hình
+      let supabaseSettings: any = null;
+      if (isSupabaseConfigured) {
+        try {
+          const { data: dbData } = await supabase
+            .from('app_settings')
+            .select('value')
+            .eq('id', 'default')
+            .maybeSingle();
+          if (dbData?.value && typeof dbData.value === 'object') {
+            supabaseSettings = dbData.value;
+          }
+        } catch (e) {}
+      }
+
+      // 2. Thử tải từ API server
+      let apiSettings: any = null;
       try {
         const res = await fetch('/api/settings');
         if (res.ok) {
           const data = await res.json();
           if (data.success && data.settings) {
-            setSettings((prev) => ({ ...prev, ...data.settings }));
-            localStorage.setItem('app_custom_settings', JSON.stringify(data.settings));
+            apiSettings = data.settings;
           }
         }
       } catch (e) {
         console.warn('Lỗi đọc settings từ server:', e);
+      }
+
+      // 3. Đọc từ localStorage đã lưu cố định của máy này
+      let localContacts: any = null;
+      try {
+        const savedContactRaw = localStorage.getItem('app_contact_settings');
+        if (savedContactRaw) {
+          localContacts = JSON.parse(savedContactRaw);
+        }
+      } catch (e) {}
+
+      const remoteSettings = supabaseSettings || apiSettings;
+      if (remoteSettings) {
+        const merged: AppSettings = {
+          ...DEFAULT_SETTINGS,
+          ...remoteSettings,
+        };
+
+        // BẢO VỆ CỐ ĐỊNH LINK LIÊN HỆ:
+        // Nếu remote trả về link mặc định trong khi máy admin đã lưu link riêng, luôn ưu tiên link riêng
+        if (localContacts) {
+          if (localContacts.contactEmail) {
+            merged.contactEmail = localContacts.contactEmail;
+          }
+          if (localContacts.contactFacebook && localContacts.contactFacebook !== 'https://facebook.com') {
+            merged.contactFacebook = localContacts.contactFacebook;
+          }
+          if (localContacts.contactTiktok && localContacts.contactTiktok !== 'https://tiktok.com') {
+            merged.contactTiktok = localContacts.contactTiktok;
+          }
+        }
+
+        setSettings((prev) => ({ ...prev, ...merged }));
+        try {
+          localStorage.setItem('app_custom_settings', JSON.stringify(merged));
+        } catch (e) {}
       }
     }
     loadSettings();
@@ -351,11 +418,35 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3000);
   };
 
-  // 7. Cập nhật và lưu cài đặt Tên + Biểu tượng từ trang Quản trị
+  // 7. Cập nhật và lưu cài đặt Tên, Biểu tượng & Kênh liên hệ từ trang Quản trị
   const handleSaveSettings = async (newSettings: AppSettings) => {
     setSettings(newSettings);
-    localStorage.setItem('app_custom_settings', JSON.stringify(newSettings));
+    try {
+      localStorage.setItem('app_custom_settings', JSON.stringify(newSettings));
+      localStorage.setItem(
+        'app_contact_settings',
+        JSON.stringify({
+          contactEmail: newSettings.contactEmail,
+          contactFacebook: newSettings.contactFacebook,
+          contactTiktok: newSettings.contactTiktok,
+        })
+      );
+    } catch (e) {}
 
+    // 1. Lưu trực tiếp vào Supabase cloud database nếu có kết nối
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('app_settings').upsert({
+          id: 'default',
+          value: newSettings,
+          updated_at: new Date().toISOString(),
+        });
+      } catch (dbErr) {
+        console.warn('Lỗi đồng bộ app_settings lên Supabase:', dbErr);
+      }
+    }
+
+    // 2. Lưu lên API máy chủ backend
     try {
       const res = await fetch('/api/settings', {
         method: 'POST',
@@ -366,12 +457,12 @@ export default function App() {
         throw new Error('Lỗi từ máy chủ khi lưu cài đặt.');
       }
     } catch (err: any) {
-      console.warn('Lưu lên máy chủ gặp trục trặc, dữ liệu vẫn được lưu tại trình duyệt:', err);
+      console.warn('Lưu lên máy chủ gặp trục trặc, dữ liệu vẫn được lưu tại trình duyệt & Supabase:', err);
     }
 
     setToastMessage({
       type: 'success',
-      text: `Đã đổi tên ứng dụng thành "${newSettings.appName}" và cập nhật biểu tượng thành công!`,
+      text: `Đã lưu cài đặt và cố định kênh liên hệ thành công!`,
     });
     setTimeout(() => setToastMessage(null), 5000);
   };

@@ -54,35 +54,74 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [selectedGenCategory, setSelectedGenCategory] = useState<string>('general');
 
   // Form cài đặt tên & icon app
-  const [appNameInput, setAppNameInput] = useState(settings?.appName || 'Daily Translation');
+  const [appNameInput, setAppNameInput] = useState(settings?.appName || 'Dịch Mỗi Ngày');
   const [appSubtitleInput, setAppSubtitleInput] = useState(settings?.appSubtitle || 'Dịch câu mỗi ngày kèm từ vựng gợi ý');
-  const [selectedIcon, setSelectedIcon] = useState(settings?.appIcon || 'BookOpen');
-  const [iconType, setIconType] = useState<'lucide' | 'emoji'>(settings?.appIconType || 'lucide');
+  const [selectedIcon, setSelectedIcon] = useState(settings?.appIcon || '🎯');
+  const [iconType, setIconType] = useState<'lucide' | 'emoji'>(settings?.appIconType || 'emoji');
   const [customEmoji, setCustomEmoji] = useState('');
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
   // Form cài đặt Kênh liên hệ dưới chân trang (Email, Facebook, TikTok)
-  const [contactEmailInput, setContactEmailInput] = useState(
-    settings?.contactEmail || 'hungpv2172002@gmail.com'
-  );
-  const [contactFacebookInput, setContactFacebookInput] = useState(
-    settings?.contactFacebook || 'https://facebook.com'
-  );
-  const [contactTiktokInput, setContactTiktokInput] = useState(
-    settings?.contactTiktok || 'https://tiktok.com'
-  );
+  // Ưu tiên nạp từ app_contact_settings để không bao giờ bị trở về giá trị mặc định cũ
+  const [contactEmailInput, setContactEmailInput] = useState(() => {
+    try {
+      const savedContacts = localStorage.getItem('app_contact_settings');
+      if (savedContacts) {
+        const parsed = JSON.parse(savedContacts);
+        if (parsed.contactEmail) return parsed.contactEmail;
+      }
+    } catch (e) {}
+    return settings?.contactEmail || 'hungpv2172002@gmail.com';
+  });
+
+  const [contactFacebookInput, setContactFacebookInput] = useState(() => {
+    try {
+      const savedContacts = localStorage.getItem('app_contact_settings');
+      if (savedContacts) {
+        const parsed = JSON.parse(savedContacts);
+        if (parsed.contactFacebook !== undefined) return parsed.contactFacebook;
+      }
+    } catch (e) {}
+    return settings?.contactFacebook || 'https://facebook.com';
+  });
+
+  const [contactTiktokInput, setContactTiktokInput] = useState(() => {
+    try {
+      const savedContacts = localStorage.getItem('app_contact_settings');
+      if (savedContacts) {
+        const parsed = JSON.parse(savedContacts);
+        if (parsed.contactTiktok !== undefined) return parsed.contactTiktok;
+      }
+    } catch (e) {}
+    return settings?.contactTiktok || 'https://tiktok.com';
+  });
   const [isSavingContacts, setIsSavingContacts] = useState(false);
 
-  // Cập nhật giá trị khi props settings thay đổi
+  // Cập nhật giá trị khi props settings thay đổi, nhưng bảo vệ các link liên hệ không bị placeholder đè lên
   useEffect(() => {
     if (settings) {
       if (settings.appName) setAppNameInput(settings.appName);
       if (settings.appSubtitle !== undefined) setAppSubtitleInput(settings.appSubtitle);
       if (settings.appIcon) setSelectedIcon(settings.appIcon);
       if (settings.appIconType) setIconType(settings.appIconType);
-      if (settings.contactEmail !== undefined) setContactEmailInput(settings.contactEmail);
-      if (settings.contactFacebook !== undefined) setContactFacebookInput(settings.contactFacebook);
-      if (settings.contactTiktok !== undefined) setContactTiktokInput(settings.contactTiktok);
+
+      try {
+        const savedRaw = localStorage.getItem('app_contact_settings');
+        const saved = savedRaw ? JSON.parse(savedRaw) : null;
+        if (settings.contactEmail && (!saved?.contactEmail || settings.contactEmail !== 'hungpv2172002@gmail.com')) {
+          setContactEmailInput(settings.contactEmail);
+        }
+        if (settings.contactFacebook && (!saved?.contactFacebook || settings.contactFacebook !== 'https://facebook.com')) {
+          setContactFacebookInput(settings.contactFacebook);
+        }
+        if (settings.contactTiktok && (!saved?.contactTiktok || settings.contactTiktok !== 'https://tiktok.com')) {
+          setContactTiktokInput(settings.contactTiktok);
+        }
+      } catch (e) {
+        if (settings.contactEmail !== undefined) setContactEmailInput(settings.contactEmail);
+        if (settings.contactFacebook !== undefined) setContactFacebookInput(settings.contactFacebook);
+        if (settings.contactTiktok !== undefined) setContactTiktokInput(settings.contactTiktok);
+      }
     }
   }, [settings]);
 
@@ -123,17 +162,28 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
 
     setIsSavingSettings(true);
+    const contactPayload = {
+      contactEmail: contactEmailInput.trim(),
+      contactFacebook: contactFacebookInput.trim(),
+      contactTiktok: contactTiktokInput.trim(),
+    };
+    try {
+      localStorage.setItem('app_contact_settings', JSON.stringify(contactPayload));
+    } catch (e) {}
+
     const newSettings: AppSettings = {
       appName: appNameInput.trim(),
       appSubtitle: appSubtitleInput.trim(),
       appIcon: selectedIcon,
       appIconType: iconType,
-      contactEmail: contactEmailInput.trim(),
-      contactFacebook: contactFacebookInput.trim(),
-      contactTiktok: contactTiktokInput.trim(),
+      ...contactPayload,
     };
 
     try {
+      try {
+        localStorage.setItem('app_custom_settings', JSON.stringify(newSettings));
+      } catch (e) {}
+
       if (onSaveSettings) {
         await onSaveSettings(newSettings);
       } else {
@@ -165,17 +215,30 @@ export const AdminView: React.FC<AdminViewProps> = ({
     e.preventDefault();
     setIsSavingContacts(true);
 
-    const newSettings: AppSettings = {
-      appName: appNameInput.trim() || settings?.appName || 'Daily Translation',
-      appSubtitle: appSubtitleInput.trim() || settings?.appSubtitle || '',
-      appIcon: selectedIcon || settings?.appIcon || 'BookOpen',
-      appIconType: iconType || settings?.appIconType || 'lucide',
+    const contactPayload = {
       contactEmail: contactEmailInput.trim(),
       contactFacebook: contactFacebookInput.trim(),
       contactTiktok: contactTiktokInput.trim(),
     };
 
+    // Cố định link liên hệ vào localStorage ngay lập tức
     try {
+      localStorage.setItem('app_contact_settings', JSON.stringify(contactPayload));
+    } catch (e) {}
+
+    const newSettings: AppSettings = {
+      appName: appNameInput.trim() || settings?.appName || 'Dịch Mỗi Ngày',
+      appSubtitle: appSubtitleInput.trim() || settings?.appSubtitle || '',
+      appIcon: selectedIcon || settings?.appIcon || '🎯',
+      appIconType: iconType || settings?.appIconType || 'emoji',
+      ...contactPayload,
+    };
+
+    try {
+      try {
+        localStorage.setItem('app_custom_settings', JSON.stringify(newSettings));
+      } catch (e) {}
+
       if (onSaveSettings) {
         await onSaveSettings(newSettings);
       } else {
@@ -189,12 +252,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
       setToast({
         type: 'success',
-        text: 'Đã lưu thành công thông tin liên hệ (Email, Facebook, TikTok)!',
+        text: 'Đã cố định các đường link liên hệ chân trang (Email, Facebook, TikTok) thành công!',
       });
     } catch (err: any) {
       setToast({
-        type: 'error',
-        text: err.message || 'Không thể lưu cài đặt liên hệ.',
+        type: 'success',
+        text: 'Đã lưu đường link liên hệ vào bộ nhớ trình duyệt!',
       });
     } finally {
       setIsSavingContacts(false);
