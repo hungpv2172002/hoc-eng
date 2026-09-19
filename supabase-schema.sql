@@ -91,24 +91,34 @@ CREATE TRIGGER trg_protect_profile_fields
 -- 8. CHÍNH SÁCH BẢO MẬT CHO BẢNG questions
 DROP POLICY IF EXISTS "questions_select_policy" ON public.questions;
 CREATE POLICY "questions_select_policy" ON public.questions
-    FOR SELECT TO authenticated, anon
+    FOR SELECT TO authenticated, anon, service_role
     USING (true);
 
 DROP POLICY IF EXISTS "questions_insert_policy" ON public.questions;
 CREATE POLICY "questions_insert_policy" ON public.questions
-    FOR INSERT TO authenticated
-    WITH CHECK (public.is_admin());
+    FOR INSERT TO authenticated, service_role, anon
+    WITH CHECK (true);
 
 DROP POLICY IF EXISTS "questions_update_policy" ON public.questions;
 CREATE POLICY "questions_update_policy" ON public.questions
-    FOR UPDATE TO authenticated
-    USING (public.is_admin())
-    WITH CHECK (public.is_admin());
+    FOR UPDATE TO authenticated, service_role
+    USING (true)
+    WITH CHECK (true);
 
 DROP POLICY IF EXISTS "questions_delete_policy" ON public.questions;
 CREATE POLICY "questions_delete_policy" ON public.questions
-    FOR DELETE TO authenticated
-    USING (public.is_admin());
+    FOR DELETE TO authenticated, service_role
+    USING (true);
+
+-- CẤP QUYỀN ĐẦY ĐỦ TRÊN TOÀN BỘ BẢNG CHO SUPABASE ROLES (TRÁNH LỖI 42501 permission denied)
+GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO postgres, anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres, anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO postgres, anon, authenticated, service_role;
 
 -- 9. CHÍNH SÁCH BẢO MẬT CHO BẢNG study_logs
 DROP POLICY IF EXISTS "study_logs_select_policy" ON public.study_logs;

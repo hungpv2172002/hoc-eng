@@ -38,7 +38,77 @@ const supabaseAdmin = hasSupabaseAdmin
     })
   : null;
 
+// Bộ nhớ câu hỏi đệm (In-memory questions store)
+// Đảm bảo học viên luôn học được câu mới ngay lập tức kể cả khi Supabase đang bị lỗi phân quyền
+let memoryQuestionsStore: any[] = INITIAL_QUESTIONS.map((q, i) => ({
+  id: i + 1,
+  vi: q.vi,
+  hints: q.hints,
+  answers: q.answers,
+  created_date: new Date().toISOString().split('T')[0],
+}));
+
+// Cài đặt tên và biểu tượng ứng dụng (có thể chỉnh sửa từ trang Admin)
+const SETTINGS_FILE = path.join(process.cwd(), 'app-settings.json');
+let appSettings = {
+  appName: 'Daily Translation',
+  appSubtitle: 'Dịch câu mỗi ngày kèm từ vựng gợi ý',
+  appIcon: 'BookOpen',
+  appIconType: 'lucide',
+};
+
+// Đọc cài đặt đã lưu nếu có
+try {
+  if (fs.existsSync(SETTINGS_FILE)) {
+    const saved = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8'));
+    if (saved && typeof saved === 'object') {
+      appSettings = { ...appSettings, ...saved };
+    }
+  }
+} catch (e) {
+  console.warn('Không thể đọc file app-settings.json:', e);
+}
+
+/**
+ * Đảo câu hỏi theo ngày bằng seeded PRNG
+ * Giúp mỗi ngày người học có một danh sách câu hoàn toàn khác biệt
+ */
+function getDailyRotatedQuestions(allQuestions: any[], dateStr?: string): any[] {
+  if (!allQuestions || allQuestions.length === 0) return [];
+  const today = dateStr || new Date().toISOString().split('T')[0];
+  let seed = 0;
+  for (let i = 0; i < today.length; i++) {
+    seed = ((seed << 5) - seed) + today.charCodeAt(i);
+    seed |= 0;
+  }
+  seed = Math.abs(seed) || 12345;
+  const random = () => {
+    let t = (seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  const todayQuestions = allQuestions.filter((q) => q.created_date === today);
+  const otherQuestions = allQuestions.filter((q) => q.created_date !== today);
+
+  const shuffledToday = [...todayQuestions];
+  for (let i = shuffledToday.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [shuffledToday[i], shuffledToday[j]] = [shuffledToday[j], shuffledToday[i]];
+  }
+
+  const shuffledOthers = [...otherQuestions];
+  for (let i = shuffledOthers.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [shuffledOthers[i], shuffledOthers[j]] = [shuffledOthers[j], shuffledOthers[i]];
+  }
+
+  return [...shuffledToday, ...shuffledOthers];
+}
+
 // Health check endpoint
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -125,19 +195,36 @@ app.all('/api/cron/generate', async (req, res) => {
       });
     }
 
+    const requestedCategory =
+      ((req.query.category || req.body?.category) as string | undefined)?.toLowerCase() || 'general';
+
+    let industryInstruction = 'giao tiếp đời thường và xã hội thực tế';
+    if (requestedCategory === 'it') {
+      industryInstruction =
+        'chuyên ngành Công Nghệ Thông Tin & Lập Trình (IT, Tech, Scrum/Agile, review code, bug report, deploy server, API, database queries, sprint)';
+    } else if (requestedCategory === 'business') {
+      industryInstruction =
+        'chuyên ngành Kinh Doanh, Bán Hàng & Marketing (Business, Sales, đàm phán hợp đồng, pitching, khách hàng doanh nghiệp, báo cáo doanh thu, chiết khấu)';
+    } else if (requestedCategory === 'hospitality') {
+      industryInstruction =
+        'chuyên ngành Khách Sạn, Nhà Hàng & Du Lịch (Hospitality & Tourism, lễ tân check-in, tiếp đón khách nước ngoài, xử lý phàn nàn, phục vụ buffet)';
+    }
+
     const prompt = `Bạn là một chuyên gia ngôn ngữ tiếng Anh và tiếng Việt.
-Hãy tạo đúng 10 câu luyện dịch giao tiếp thường ngày từ tiếng Việt sang tiếng Anh cực kỳ thiết thực, tự nhiên và hữu ích cho người học.
+Hãy tạo đúng 10 câu luyện dịch chuyên sâu thuộc chủ đề: ${industryInstruction} từ tiếng Việt sang tiếng Anh cực kỳ thiết thực, tự nhiên và hữu ích cho người học.
 Mỗi câu bài tập gồm:
-1. "vi": Câu tiếng Việt tự nhiên trong giao tiếp đời thường hoặc công việc.
-2. "hints": Gợi ý 2-3 từ vựng hoặc cụm từ then chốt (ví dụ: "perhaps = có lẽ; more time = thêm thời gian").
+1. "vi": Câu tiếng Việt tự nhiên trong bối cảnh thực tế nêu trên.
+2. "hints": Gợi ý 2-3 từ vựng hoặc cụm từ then chốt (ví dụ: "pull request = yêu cầu pull; review code = xem xét mã nguồn").
 3. "answers": Mảng gồm ít nhất 2 đến 4 câu tiếng Anh tương đương chuẩn xác và được chấp nhận (bao gồm cả cách nói rút gọn như "don't" và đầy đủ "do not").`;
 
-    // Danh sách model ưu tiên tự động cân bằng tải
+    // Danh sách model ưu tiên tự động cân bằng tải (ưu tiên model phản hồi nhanh và ổn định nhất)
+
     const CANDIDATE_MODELS = [
-      'gemini-flash-latest',
       'gemini-3.1-flash-lite',
       'gemini-3.8-flash',
       'gemini-3.6-flash',
+      'gemini-flash-latest',
+      'gemini-3.1-pro-preview',
     ];
 
     let questionsData: any[] = [];
@@ -193,11 +280,16 @@ Mỗi câu bài tập gồm:
     if (questionsData.length === 0) {
       console.log('[AI Fallback] Kích hoạt ngân hàng câu hỏi giao tiếp chuẩn.');
       isCuratedFallback = true;
-      const shuffled = [...INITIAL_QUESTIONS].sort(() => Math.random() - 0.5);
+      const matchingPool = INITIAL_QUESTIONS.filter(
+        (q) => (q.category || 'general') === requestedCategory
+      );
+      const poolToUse = matchingPool.length > 0 ? matchingPool : INITIAL_QUESTIONS;
+      const shuffled = [...poolToUse].sort(() => Math.random() - 0.5);
       questionsData = shuffled.slice(0, 10).map((item) => ({
         vi: item.vi,
         hints: item.hints,
         answers: item.answers,
+        category: requestedCategory,
       }));
     }
 
@@ -207,56 +299,69 @@ Mỗi câu bài tập gồm:
       hints: q.hints,
       answers: Array.isArray(q.answers) ? q.answers : [q.answers],
       created_date: today,
+      category: requestedCategory,
     }));
 
-    // Nếu đã kết nối Supabase, nạp thẳng vào database
+
+    // Luôn đưa câu hỏi mới vào bộ nhớ đệm để người học có thể làm bài ngay tức thì
+    const newWithLocalIds = records.map((r: any, idx: number) => ({
+      id: Date.now() + idx,
+      ...r,
+    }));
+    memoryQuestionsStore = [...newWithLocalIds, ...memoryQuestionsStore];
+
     let insertedData = null;
+    let supabaseSaveSuccess = false;
+    let supabaseWarning: string | null = null;
+    let fixSql: string | null = null;
+
     if (supabaseAdmin) {
-      const { data, error } = await supabaseAdmin
-        .from('questions')
-        .insert(records)
-        .select();
+      try {
+        const { data, error } = await supabaseAdmin
+          .from('questions')
+          .insert(records)
+          .select();
 
-      if (error) {
-        console.warn('Lưu vào Supabase thất bại:', error.message);
-        const isTableMissing =
-          error.message?.includes('schema cache') ||
-          error.message?.includes('does not exist') ||
-          error.code === 'PGRST204';
+        if (error) {
+          console.warn('Lưu vào Supabase thất bại:', error.message);
+          const isTableMissing =
+            error.message?.includes('schema cache') ||
+            error.message?.includes('does not exist') ||
+            error.code === 'PGRST204';
+          const isPermissionDenied =
+            error.message?.includes('permission denied') ||
+            error.code === '42501';
 
-        if (isTableMissing) {
-          return res.json({
-            success: true,
-            warning: 'Bảng "public.questions" chưa được tạo trên Supabase.',
-            schema_missing: true,
-            message: 'Đã tạo 10 câu hỏi thành công! Tuy nhiên cơ sở dữ liệu Supabase của bạn chưa có bảng "questions". Vui lòng mở Supabase SQL Editor và chạy file supabase-schema.sql để khởi tạo bảng.',
-            solution: 'Vào Supabase Dashboard -> SQL Editor -> New query -> Dán nội dung supabase-schema.sql -> Nhấn Run.',
-            count: records.length,
-            modelUsed: successfulModel || 'curated_database',
-            isCuratedFallback,
-            insertedToSupabase: false,
-            data: records,
-          });
+          if (isTableMissing) {
+            supabaseWarning = 'table_missing';
+          } else if (isPermissionDenied) {
+            supabaseWarning = 'permission_denied';
+            fixSql = 'GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;\nGRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;\nGRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres, anon, authenticated, service_role;';
+          } else {
+            supabaseWarning = error.message;
+          }
+        } else if (data) {
+          supabaseSaveSuccess = true;
+          insertedData = data;
         }
-
-        return res.status(500).json({
-          error: 'Lỗi Supabase khi lưu câu hỏi: ' + error.message,
-          generatedQuestions: records,
-        });
+      } catch (dbEx: any) {
+        console.warn('Ngoại lệ khi gọi Supabase:', dbEx.message);
+        supabaseWarning = dbEx.message;
       }
-      insertedData = data;
     }
 
     return res.json({
       success: true,
       message: isCuratedFallback
-        ? `Đã nạp ${records.length} câu hỏi giao tiếp chuẩn chọn lọc (do Gemini AI tạm thời cao tải 503).`
-        : `Đã sinh thành công ${records.length} câu hỏi mới bằng Gemini API (${successfulModel}).`,
+        ? `Đã nạp ${records.length} câu hỏi giao tiếp chuẩn chọn lọc.`
+        : `Đã sinh thành công ${records.length} câu hỏi mới bằng Gemini AI (${successfulModel})!`,
       count: records.length,
       modelUsed: successfulModel || 'curated_database',
       isCuratedFallback,
-      insertedToSupabase: !!supabaseAdmin,
-      data: insertedData || records,
+      insertedToSupabase: supabaseSaveSuccess,
+      supabaseWarning,
+      fixSql,
+      data: insertedData || newWithLocalIds,
     });
   } catch (err: any) {
     console.error('Lỗi khi sinh câu hỏi:', err);
@@ -265,6 +370,110 @@ Mỗi câu bài tập gồm:
     });
   }
 });
+
+// Endpoint lấy danh sách câu hỏi phục vụ học viên
+// Hỗ trợ tự động đảo câu theo ngày (daily rotation), mỗi ngày một danh sách câu mới mẻ
+app.get('/api/questions', async (req, res) => {
+  const queryDate = (req.query.date as string) || new Date().toISOString().split('T')[0];
+  const mode = (req.query.mode as string) || 'daily'; // 'daily' hoặc 'raw'
+
+  let rawQuestions = memoryQuestionsStore;
+  let source = 'memory';
+
+  try {
+    if (supabaseAdmin) {
+      const { data, error } = await supabaseAdmin
+        .from('questions')
+        .select('*')
+        .order('id', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        rawQuestions = data;
+        source = 'supabase';
+      }
+    }
+  } catch (err: any) {
+    console.warn('Lỗi đọc câu hỏi từ Supabase, chuyển sang bộ nhớ đệm:', err.message);
+  }
+
+  // Luôn hợp nhất với INITIAL_QUESTIONS để đảm bảo 100% luôn có đầy đủ các câu hỏi chuyên ngành IT, Business, Hospitality
+  const existingIds = new Set(rawQuestions.map((q: any) => q.id));
+  const missingQuestions = INITIAL_QUESTIONS.filter((q) => !existingIds.has(q.id));
+  if (missingQuestions.length > 0) {
+    rawQuestions = [...rawQuestions, ...missingQuestions];
+  }
+
+  // Lọc theo chuyên ngành nghề nghiệp nếu có yêu cầu (it, business, hospitality, general)
+
+  const category = (req.query.category as string | undefined)?.toLowerCase();
+  let pool = rawQuestions;
+  if (category && category !== 'all') {
+    const matched = rawQuestions.filter((q) => (q.category || 'general') === category);
+    if (matched.length > 0) {
+      pool = matched;
+    }
+  }
+
+  // Tự động đảo câu hỏi theo ngày nếu mode !== 'raw'
+  const finalQuestions = mode === 'raw'
+    ? pool
+    : getDailyRotatedQuestions(pool, queryDate);
+
+  return res.json({
+    success: true,
+    questions: finalQuestions,
+    total: finalQuestions.length,
+    date: queryDate,
+    category: category || 'all',
+    isRotatedDaily: mode !== 'raw',
+    source,
+  });
+
+});
+
+// Endpoint lấy cài đặt thương hiệu ứng dụng (Tên, Biểu tượng)
+app.get('/api/settings', (req, res) => {
+  return res.json({
+    success: true,
+    settings: appSettings,
+  });
+});
+
+// Endpoint cập nhật cài đặt ứng dụng từ trang Admin
+app.post('/api/settings', (req, res) => {
+  try {
+    const { appName, appSubtitle, appIcon, appIconType } = req.body || {};
+
+    if (appName && typeof appName === 'string') {
+      appSettings.appName = appName.trim();
+    }
+    if (typeof appSubtitle === 'string') {
+      appSettings.appSubtitle = appSubtitle.trim();
+    }
+    if (appIcon && typeof appIcon === 'string') {
+      appSettings.appIcon = appIcon.trim();
+    }
+    if (appIconType === 'lucide' || appIconType === 'emoji') {
+      appSettings.appIconType = appIconType;
+    }
+
+    // Ghi vào file disk
+    try {
+      fs.writeFileSync(SETTINGS_FILE, JSON.stringify(appSettings, null, 2), 'utf-8');
+    } catch (e) {
+      console.warn('Không thể ghi file app-settings.json:', e);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Đã lưu thay đổi tên và biểu tượng ứng dụng thành công!',
+      settings: appSettings,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 
 // Endpoint trả về nội dung file SQL để dễ dàng sao chép từ giao diện Quản Trị
 app.get('/api/schema', (req, res) => {
@@ -329,4 +538,8 @@ async function start() {
   });
 }
 
-start();
+if (!process.env.VERCEL) {
+  start();
+}
+
+export default app;

@@ -73,10 +73,11 @@ Mỗi câu bài tập gồm:
 
     // 3. Danh sách model ưu tiên tự động cân bằng tải
     const CANDIDATE_MODELS = [
-      'gemini-flash-latest',
       'gemini-3.1-flash-lite',
       'gemini-3.8-flash',
       'gemini-3.6-flash',
+      'gemini-flash-latest',
+      'gemini-3.1-pro-preview',
     ];
 
     let questionsData: any[] = [];
@@ -159,46 +160,44 @@ Mỗi câu bài tập gồm:
       .insert(recordsToInsert)
       .select();
 
+    let supabaseSaveSuccess = false;
+    let supabaseWarning: string | null = null;
+    let fixSql: string | null = null;
+
     if (dbError) {
       console.warn('Lỗi khi nạp vào Supabase:', dbError.message);
       const isTableMissing =
         dbError.message?.includes('schema cache') ||
         dbError.message?.includes('does not exist') ||
         dbError.code === 'PGRST204';
+      const isPermissionDenied =
+        dbError.message?.includes('permission denied') ||
+        dbError.code === '42501';
 
       if (isTableMissing) {
-        return NextResponse.json({
-          success: true,
-          warning: 'Bảng "public.questions" chưa được tạo trên Supabase.',
-          schema_missing: true,
-          message: 'Đã tạo 10 câu hỏi thành công! Tuy nhiên cơ sở dữ liệu Supabase của bạn chưa có bảng "questions". Vui lòng mở Supabase SQL Editor và chạy file supabase-schema.sql để khởi tạo bảng.',
-          solution: 'Vào Supabase Dashboard -> SQL Editor -> New query -> Dán nội dung supabase-schema.sql -> Nhấn Run.',
-          count: recordsToInsert.length,
-          modelUsed: successfulModel || 'curated_database',
-          isCuratedFallback,
-          insertedToSupabase: false,
-          data: recordsToInsert,
-        });
+        supabaseWarning = 'table_missing';
+      } else if (isPermissionDenied) {
+        supabaseWarning = 'permission_denied';
+        fixSql = 'GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;\nGRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;\nGRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres, anon, authenticated, service_role;';
+      } else {
+        supabaseWarning = dbError.message;
       }
-
-      return NextResponse.json(
-        {
-          error: 'Lỗi Supabase khi lưu câu hỏi: ' + dbError.message,
-          generatedQuestions: recordsToInsert,
-        },
-        { status: 500 }
-      );
+    } else if (insertedData) {
+      supabaseSaveSuccess = true;
     }
 
     return NextResponse.json({
       success: true,
       message: isCuratedFallback
-        ? `Đã nạp ${recordsToInsert.length} câu hỏi giao tiếp chuẩn chọn lọc (do Gemini AI tạm thời cao tải 503).`
-        : `Đã sinh và lưu thành công ${recordsToInsert.length} câu hỏi mới bằng Gemini API (${successfulModel}).`,
+        ? `Đã nạp ${recordsToInsert.length} câu hỏi giao tiếp chuẩn chọn lọc.`
+        : `Đã sinh thành công ${recordsToInsert.length} câu hỏi mới bằng Gemini API (${successfulModel})!`,
       modelUsed: successfulModel || 'curated_database',
       isCuratedFallback,
+      insertedToSupabase: supabaseSaveSuccess,
+      supabaseWarning,
+      fixSql,
       count: recordsToInsert.length,
-      data: insertedData,
+      data: insertedData || recordsToInsert,
     });
   } catch (error: unknown) {
     console.error('Lỗi API Cron Generate:', error);

@@ -210,11 +210,21 @@ export default function AdminPage() {
         throw new Error(json.error || 'Lỗi khi gọi API cron sinh câu');
       }
 
-      if (json.schema_missing) {
+      if (json.schema_missing || json.supabaseWarning === 'table_missing') {
         setIsSchemaMissing(true);
         setToastMsg({
           type: 'error',
-          text: 'Bảng "questions" chưa được tạo trên Supabase. Nhấn vào "Xem & Chạy SQL" bên dưới để khởi tạo bảng nhé!',
+          text: 'Bảng "questions" chưa được tạo trên Supabase. Đã mở hướng dẫn để bạn chạy lệnh SQL khởi tạo nhé!',
+        });
+        setShowSqlModal(true);
+        fetchSql();
+        return;
+      }
+
+      if (json.supabaseWarning === 'permission_denied') {
+        setToastMsg({
+          type: 'success',
+          text: `Gemini AI đã tạo xong ${json.count || 10} câu hỏi mới và sẵn sàng luyện tập! Để lưu vĩnh viễn vào Supabase, hãy dán lại mã SQL mới (đã bổ sung cấp quyền) vào Supabase SQL Editor.`,
         });
         setShowSqlModal(true);
         fetchSql();
@@ -223,7 +233,7 @@ export default function AdminPage() {
 
       setToastMsg({
         type: 'success',
-        text: `Gemini AI đã sinh và nạp thành công ${json.count || 10} câu hỏi mới vào cơ sở dữ liệu!`,
+        text: `Gemini AI đã sinh và nạp thành công ${json.count || 10} câu hỏi mới vào hệ thống!`,
       });
       fetchProfiles();
     } catch (err: unknown) {

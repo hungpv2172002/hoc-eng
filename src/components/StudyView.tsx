@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Question, Profile } from '../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Question, Profile, CareerCategory, CareerTrackInfo, CAREER_TRACKS } from '../types';
 import {
   Volume2,
   CheckCircle,
@@ -11,8 +11,22 @@ import {
   Award,
   Sparkles,
   ArrowRight,
+  Shuffle,
+  CalendarDays,
+  Gauge,
+  Briefcase,
+  Code2,
+  Hotel,
+  MessageSquare,
+  Lock,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { formatFriendlyDate, getDailyRotatedQuestions } from '../lib/questionRotation';
+import { INITIAL_QUESTIONS } from '../data/initialQuestions';
+import { AudioButton, playSpeech, SPEED_OPTIONS } from './AudioButton';
+import { CareerTrackSelector } from './CareerTrackSelector';
+import { VipPromptModal } from './VipPromptModal';
+
 
 interface StudyViewProps {
   questions: Question[];
@@ -20,6 +34,8 @@ interface StudyViewProps {
   todayCount: number;
   onQuestionCompleted: (questionId: number) => void;
   onOpenAuth: () => void;
+  onShuffle?: () => void;
+  todayDateString?: string;
 }
 
 export function normalizeSentence(text: string): string {
@@ -32,13 +48,8 @@ export function normalizeSentence(text: string): string {
     .replace(/\s+/g, ' ');
 }
 
-export function speakText(text: string) {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'en-US';
-  utterance.rate = 0.9;
-  window.speechSynthesis.speak(utterance);
+export function speakText(text: string, rate: number = 0.9) {
+  playSpeech(text, rate);
 }
 
 export const StudyView: React.FC<StudyViewProps> = ({
@@ -47,16 +58,110 @@ export const StudyView: React.FC<StudyViewProps> = ({
   todayCount,
   onQuestionCompleted,
   onOpenAuth,
+  onShuffle,
+  todayDateString,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
   const [resultState, setResultState] = useState<'idle' | 'correct' | 'wrong'>('idle');
   const [submitting, setSubmitting] = useState(false);
 
-  const isVip = profile?.is_vip ?? false;
-  const isFreeLimitReached = !isVip && todayCount >= 30;
+  // 1. Quản lý Tốc độ nghe (0.75x, 0.9x, 1.0x, 1.25x)
+  const [audioSpeed, setAudioSpeed] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('audio_playback_speed');
+        if (saved) return parseFloat(saved) || 0.9;
+      } catch (e) {}
+    }
+    return 0.9;
+  });
 
-  const currentQuestion = questions[currentIndex];
+  const handleSpeedChange = (newSpeed: number) => {
+    setAudioSpeed(newSpeed);
+    try {
+      localStorage.setItem('audio_playback_speed', newSpeed.toString());
+    } catch (e) {}
+  };
+
+  // 2. Phân loại ngành nghề cho VIP
+  const [selectedCategory, setSelectedCategory] = useState<CareerCategory>('general');
+  const [vipModalTrack, setVipModalTrack] = useState<CareerTrackInfo | null>(null);
+  const [shuffleSeed, setShuffleSeed] = useState(0);
+
+  const isVip = profile?.is_vip ?? false;
+  const isAdmin = profile?.role === 'admin';
+  const hasVipAccess = isVip || isAdmin;
+
+  const isFreeLimitReached = !hasVipAccess && todayCount >= 30;
+
+  // Hợp nhất toàn bộ câu hỏi (từ Supabase / API + Ngân hàng mẫu INITIAL_QUESTIONS)
+  // Đảm bảo 100% người dùng bấm vào IT, Business, Hospitality hay General đều luôn có danh sách câu hỏi phong phú
+  const allAvailableQuestions = useMemo(() => {
+    const existingIds = new Set(questions.map((q) => q.id));
+    const supplement = INITIAL_QUESTIONS.filter((q) => !existingIds.has(q.id));
+    return [...questions, ...supplement];
+  }, [questions]);
+
+  // Đếm số lượng câu hỏi theo từng chuyên ngành
+  const questionCounts = useMemo(() => {
+    const counts: Record<CareerCategory, number> = {
+      general: 0,
+      it: 0,
+      business: 0,
+      hospitality: 0,
+    };
+    allAvailableQuestions.forEach((q) => {
+      const cat = q.category || 'general';
+      if (counts[cat] !== undefined) {
+        counts[cat]++;
+      }
+    });
+    return counts;
+  }, [allAvailableQuestions]);
+
+  // Lọc câu hỏi theo chuyên ngành đang chọn (TỰ ĐỘNG ĐẢO THEO NGÀY CHO CHUYÊN NGÀNH ĐÓ!)
+  const filteredQuestions = useMemo(() => {
+    let pool = allAvailableQuestions.filter(
+      (q) => (q.category || 'general') === selectedCategory
+    );
+    if (pool.length === 0) {
+      pool = INITIAL_QUESTIONS.filter(
+        (q) => (q.category || 'general') === selectedCategory
+      );
+    }
+    if (pool.length === 0) {
+      pool = allAvailableQuestions;
+    }
+
+    // Tự động xáo trộn theo ngày queryDate để mỗi ngày học một bộ câu mới
+    const rotated = getDailyRotatedQuestions(pool, todayDateString);
+    if (shuffleSeed > 0) {
+      return [...rotated].sort(() => Math.random() - 0.5);
+    }
+    return rotated;
+  }, [allAvailableQuestions, selectedCategory, todayDateString, shuffleSeed]);
+
+  // Reset vị trí và nạp ngay câu đầu tiên khi khách hàng ấn vào Ngành chuyên sâu
+  const handleSelectCategory = (cat: CareerCategory) => {
+    setSelectedCategory(cat);
+    setCurrentIndex(0);
+    setUserAnswer('');
+    setResultState('idle');
+  };
+
+  const currentQuestion = filteredQuestions[currentIndex] || filteredQuestions[0];
+
+  const handleManualShuffle = () => {
+    setShuffleSeed((prev) => prev + 1);
+    setCurrentIndex(0);
+    setUserAnswer('');
+    setResultState('idle');
+    if (onShuffle) {
+      onShuffle();
+    }
+  };
+
 
   const handleCheck = (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,7 +177,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
     if (isCorrect) {
       setResultState('correct');
-      speakText(currentQuestion.answers[0]);
+      playSpeech(currentQuestion.answers[0], audioSpeed);
 
       // Pháo hoa ăn mừng
       confetti({
@@ -87,7 +192,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
       setTimeout(() => {
         setResultState('idle');
         setUserAnswer('');
-        setCurrentIndex((prev) => (prev + 1 < questions.length ? prev + 1 : 0));
+        setCurrentIndex((prev) => (prev + 1 < filteredQuestions.length ? prev + 1 : 0));
         setSubmitting(false);
       }, 1500);
     } else {
@@ -99,19 +204,77 @@ export const StudyView: React.FC<StudyViewProps> = ({
   const handleNext = () => {
     setResultState('idle');
     setUserAnswer('');
-    setCurrentIndex((prev) => (prev + 1 < questions.length ? prev + 1 : 0));
+    setCurrentIndex((prev) => (prev + 1 < filteredQuestions.length ? prev + 1 : 0));
   };
 
   const handlePrev = () => {
     setResultState('idle');
     setUserAnswer('');
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : questions.length - 1));
+    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : filteredQuestions.length - 1));
   };
 
+  // Icon & nhãn cho từng category
+  const currentCategoryInfo = CAREER_TRACKS.find(
+    (t) => t.id === (currentQuestion?.category || 'general')
+  ) || CAREER_TRACKS[0];
+
   return (
-    <div className="max-w-2xl w-full mx-auto space-y-6">
+    <div className="max-w-3xl w-full mx-auto space-y-6">
+      {/* 0. THANH LỰA CHỌN CHỦ ĐỀ NGÀNH NGHỀ DÀNH CHO VIP */}
+      <CareerTrackSelector
+        selectedCategory={selectedCategory}
+        onSelectCategory={handleSelectCategory}
+        profile={profile}
+        onOpenVipPrompt={(track) => setVipModalTrack(track)}
+        questionCounts={questionCounts}
+      />
+
+      {/* POPUP KÍCH HOẠT VIP KHI XEM THÔNG TIN GÓI VIP */}
+      <VipPromptModal
+        isOpen={!!vipModalTrack}
+        onClose={() => setVipModalTrack(null)}
+        track={vipModalTrack}
+        profile={profile}
+        onOpenAuth={onOpenAuth}
+        onTrySample={() => {
+          if (vipModalTrack) {
+            handleSelectCategory(vipModalTrack.id);
+            setVipModalTrack(null);
+          }
+        }}
+      />
+
+      {/* THÔNG BÁO KHI ĐANG HỌC CHỦ ĐỀ CHUYÊN NGÀNH */}
+      {selectedCategory !== 'general' && (
+        <div className="p-3.5 bg-gradient-to-r from-indigo-50 via-purple-50 to-amber-50 border border-indigo-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-indigo-950 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <span className="p-1 rounded-lg bg-indigo-600 text-white shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5" />
+            </span>
+            <span>
+              Đang làm bài tập chuyên sâu: <strong>{currentCategoryInfo.name}</strong> ({filteredQuestions.length} câu thực tế).
+            </span>
+          </div>
+          {!hasVipAccess ? (
+            <button
+              onClick={() => setVipModalTrack(currentCategoryInfo)}
+              className="text-amber-800 hover:text-amber-950 font-bold flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-amber-200 shadow-2xs hover:bg-amber-50 transition-all text-[11px]"
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-500" />
+              <span>Xem quyền lợi VIP</span>
+            </button>
+          ) : (
+            <span className="text-emerald-700 font-bold text-[11px] flex items-center gap-1">
+              <CheckCircle className="w-3.5 h-3.5" />
+              Đặc quyền VIP
+            </span>
+          )}
+        </div>
+      )}
+
       {/* 1. MÀN HÌNH KHÓA NẾU ĐẠT MỐC 30 CÂU CỦA THÀNH VIÊN THƯỜNG */}
       {isFreeLimitReached ? (
+
         <div className="bg-white rounded-3xl p-8 text-center shadow-xl border border-amber-200 animate-in fade-in zoom-in-95">
           <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
             <Award className="w-8 h-8" />
@@ -120,20 +283,19 @@ export const StudyView: React.FC<StudyViewProps> = ({
             Chúc mừng bạn đã hoàn thành 30 câu hôm nay! 🎉
           </h2>
           <p className="text-slate-600 mb-6 text-sm leading-relaxed max-w-md mx-auto">
-            Bạn đã hoàn thành giới hạn 30 câu hôm nay. Nâng cấp VIP để học không giới hạn và mở khóa toàn bộ tính năng cao cấp!
+            Bạn đã hoàn thành giới hạn 30 câu hôm nay. Nâng cấp VIP để học không giới hạn và mở khóa toàn bộ chuyên ngành IT, Kinh Doanh, Khách Sạn!
           </p>
 
           <div className="inline-flex flex-col sm:flex-row items-center justify-center gap-3">
             <button
-              onClick={() =>
-                alert(
-                  'Vui lòng vào tài khoản Admin hoặc liên hệ Admin qua Gmail hungpv2172002@gmail.com để được kích hoạt VIP!'
-                )
-              }
+              onClick={() => {
+                const itTrack = CAREER_TRACKS.find((t) => t.id === 'it') || CAREER_TRACKS[1];
+                setVipModalTrack(itTrack);
+              }}
               className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-2xl shadow-lg shadow-amber-200 hover:brightness-105 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <Crown className="w-5 h-5 fill-white" />
-              <span>Nâng cấp VIP để học không giới hạn</span>
+              <span>Nâng cấp VIP để mở khóa toàn bộ</span>
             </button>
           </div>
         </div>
@@ -144,27 +306,58 @@ export const StudyView: React.FC<StudyViewProps> = ({
         </div>
       ) : (
         /* 2. GIAO DIỆN HỌC BÀI */
-        <div className="space-y-6">
+        <div className="space-y-5">
+          {/* Thanh trạng thái ngày & Đảo ngẫu nhiên */}
+          <div className="bg-white/80 backdrop-blur-xs border border-slate-200/80 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5 text-xs shadow-2xs">
+            <div className="flex items-center gap-2 text-slate-600">
+              <span className="p-1 rounded-lg bg-indigo-50 text-indigo-600">
+                <CalendarDays className="w-3.5 h-3.5" />
+              </span>
+              <span className="font-semibold text-slate-800">
+                {formatFriendlyDate(todayDateString)}
+              </span>
+              <span className="hidden sm:inline-block text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium border border-emerald-200">
+                Tự động đảo câu mới mỗi ngày
+              </span>
+            </div>
+
+            {onShuffle && (
+              <button
+                type="button"
+                onClick={handleManualShuffle}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 font-semibold transition-all cursor-pointer text-xs active:scale-95"
+                title="Bấm để đảo ngẫu nhiên toàn bộ thứ tự câu hỏi ngay lập tức"
+              >
+                <Shuffle className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Đảo ngẫu nhiên</span>
+              </button>
+            )}
+          </div>
+
           {/* Thanh chỉ số & Tiến độ */}
           <div className="flex items-center justify-between text-xs font-semibold text-slate-500 px-1">
             <div className="flex items-center gap-2">
               <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold">
-                CÂU {currentIndex + 1} / {questions.length}
+                CÂU {currentIndex + 1} / {filteredQuestions.length}
               </span>
               <span className="text-slate-400">•</span>
-              <span>{isVip ? 'Học không giới hạn (VIP)' : `Hôm nay: ${todayCount}/30 câu`}</span>
+              <span className="text-slate-700 font-medium">
+                {currentCategoryInfo.name}
+              </span>
+              <span className="text-slate-400">•</span>
+              <span>{hasVipAccess ? 'Học không giới hạn (VIP)' : `Hôm nay: ${todayCount}/30 câu`}</span>
             </div>
 
             <div className="flex items-center gap-1.5">
               <button
                 onClick={handlePrev}
-                className="px-2 py-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg text-xs"
+                className="px-2 py-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg text-xs cursor-pointer"
               >
                 Câu trước
               </button>
               <button
                 onClick={handleNext}
-                className="px-2 py-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg text-xs font-semibold"
+                className="px-2 py-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg text-xs font-semibold cursor-pointer"
               >
                 Câu kế
               </button>
@@ -176,7 +369,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
             <div
               className="bg-indigo-600 h-full transition-all duration-300 rounded-full"
               style={{
-                width: `${Math.min(100, ((currentIndex + 1) / questions.length) * 100)}%`,
+                width: `${Math.min(100, ((currentIndex + 1) / filteredQuestions.length) * 100)}%`,
               }}
             />
           </div>
@@ -191,21 +384,72 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 : 'border-slate-200'
             }`}
           >
+            {/* Header thẻ: Ngành nghề & Bộ điều chỉnh tốc độ nghe */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-xs font-bold px-2.5 py-1 rounded-xl flex items-center gap-1.5 ${
+                    currentQuestion.category && currentQuestion.category !== 'general'
+                      ? 'bg-amber-100 text-amber-900 border border-amber-200/80'
+                      : 'bg-indigo-50 text-indigo-800 border border-indigo-100'
+                  }`}
+                >
+                  {currentQuestion.category === 'it' && <Code2 className="w-3.5 h-3.5 text-blue-600" />}
+                  {currentQuestion.category === 'business' && <Briefcase className="w-3.5 h-3.5 text-amber-600" />}
+                  {currentQuestion.category === 'hospitality' && <Hotel className="w-3.5 h-3.5 text-emerald-600" />}
+                  {(!currentQuestion.category || currentQuestion.category === 'general') && (
+                    <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                  )}
+                  <span>{currentCategoryInfo.name}</span>
+                </span>
+                {currentQuestion.category && currentQuestion.category !== 'general' && (
+                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-white">
+                    VIP
+                  </span>
+                )}
+              </div>
+
+              {/* BỘ CHỌN TỐC ĐỘ PHÁT ÂM (0.75x, 0.9x, 1.0x, 1.25x) */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 rounded-xl p-1 text-xs">
+                <div className="flex items-center gap-1 px-1.5 text-slate-400 font-semibold text-[11px]">
+                  <Gauge className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Tốc độ:</span>
+                </div>
+                {SPEED_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      handleSpeedChange(opt.value);
+                      playSpeech(currentQuestion.answers[0], opt.value);
+                    }}
+                    title={`${opt.label} - ${opt.desc}`}
+                    className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      audioSpeed === opt.value
+                        ? 'bg-indigo-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Câu tiếng Việt in đậm */}
             <div className="mb-5">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
                   Dịch sang tiếng Anh:
                 </span>
-                <button
-                  type="button"
-                  onClick={() => speakText(currentQuestion.answers[0])}
-                  className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium cursor-pointer"
-                  title="Nghe phát âm tiếng Anh mẫu"
-                >
-                  <Volume2 className="w-4 h-4" />
-                  <span>Nghe mẫu</span>
-                </button>
+
+                {/* Nút Nghe mẫu kèm tốc độ */}
+                <AudioButton
+                  text={currentQuestion.answers[0]}
+                  speed={audioSpeed}
+                  onSpeedChange={handleSpeedChange}
+                  size="sm"
+                />
               </div>
 
               <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 leading-snug">
@@ -245,32 +489,41 @@ export const StudyView: React.FC<StudyViewProps> = ({
                     }
                   }}
                   placeholder="Gõ câu dịch tiếng Anh của bạn tại đây (Nhấn Enter để kiểm tra)..."
-                  className="w-full p-4 text-base sm:text-lg bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden transition-all resize-none font-medium leading-relaxed"
+                  className="w-full p-4 pr-32 text-base sm:text-lg bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden transition-all resize-none font-medium leading-relaxed"
                   autoFocus
                 />
 
-                {/* Nút loa phát âm trực tiếp trong khung nhập */}
-                <button
-                  type="button"
-                  onClick={() => speakText(currentQuestion.answers[0])}
-                  title="Phát âm mẫu câu này"
-                  className="absolute bottom-3 right-3 p-2 bg-white hover:bg-indigo-50 text-indigo-600 rounded-xl shadow-xs border border-slate-200 transition-transform active:scale-95 cursor-pointer"
-                >
-                  <Volume2 className="w-5 h-5" />
-                </button>
+                {/* Cụm Loa + Tốc độ nghe trực tiếp trong khung nhập câu trả lời */}
+                <div className="absolute bottom-3 right-3 flex items-center gap-1">
+                  <AudioButton
+                    text={currentQuestion.answers[0]}
+                    speed={audioSpeed}
+                    onSpeedChange={handleSpeedChange}
+                    size="sm"
+                    showSpeedSelector={false}
+                  />
+                </div>
               </div>
 
               {/* Thông báo kết quả so khớp */}
               {resultState === 'correct' && (
                 <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-900 text-sm flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
                   <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="font-bold text-emerald-900 block text-base">
-                      Chính xác! Xuất sắc lắm! 🎉
-                    </strong>
-                    <span className="text-xs text-emerald-700">
-                      Đang tự động chuyển sang câu tiếp theo...
-                    </span>
+                  <div className="flex-1 flex items-center justify-between">
+                    <div>
+                      <strong className="font-bold text-emerald-900 block text-base">
+                        Chính xác! Xuất sắc lắm! 🎉
+                      </strong>
+                      <span className="text-xs text-emerald-700">
+                        Đang tự động chuyển sang câu tiếp theo...
+                      </span>
+                    </div>
+                    <AudioButton
+                      text={currentQuestion.answers[0]}
+                      speed={audioSpeed}
+                      onSpeedChange={handleSpeedChange}
+                      size="sm"
+                    />
                   </div>
                 </div>
               )}
@@ -282,16 +535,14 @@ export const StudyView: React.FC<StudyViewProps> = ({
                     <strong className="font-bold text-rose-900 block">
                       Chưa chính xác, hãy thử lại hoặc xem câu mẫu:
                     </strong>
-                    <div className="flex items-center justify-between p-2 bg-white/80 border border-rose-200 rounded-xl font-mono text-xs text-rose-800">
+                    <div className="flex items-center justify-between p-2.5 bg-white/90 border border-rose-200 rounded-xl font-mono text-xs text-rose-800">
                       <span>"{currentQuestion.answers[0]}"</span>
-                      <button
-                        type="button"
-                        onClick={() => speakText(currentQuestion.answers[0])}
-                        className="text-indigo-600 hover:text-indigo-800 ml-2"
-                        title="Nghe phát âm đáp án chuẩn"
-                      >
-                        <Volume2 className="w-4 h-4" />
-                      </button>
+                      <AudioButton
+                        text={currentQuestion.answers[0]}
+                        speed={audioSpeed}
+                        onSpeedChange={handleSpeedChange}
+                        size="sm"
+                      />
                     </div>
                   </div>
                 </div>
@@ -333,7 +584,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
           <div>
             <strong className="font-bold block">Bạn đang trải nghiệm dưới dạng Khách</strong>
             <span className="text-indigo-700">
-              Đăng nhập qua Gmail OTP để lưu tiến độ hoàn thành mỗi ngày vào hồ sơ!
+              Đăng nhập qua Gmail OTP để nâng cấp VIP và mở khóa trọn bộ 3 ngành nghề IT, Kinh Doanh, Khách Sạn!
             </span>
           </div>
           <button

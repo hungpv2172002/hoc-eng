@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Profile, Question } from './types';
+import { Profile, Question, AppSettings } from './types';
 import { INITIAL_QUESTIONS } from './data/initialQuestions';
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient';
+import { getDailyQuestions, shuffleQuestions } from './lib/questionRotation';
 import { Header } from './components/Header';
 import { StudyView } from './components/StudyView';
 import { AdminView } from './components/AdminView';
@@ -10,9 +11,18 @@ import { ProfileModal } from './components/ProfileModal';
 import { GuideModal } from './components/GuideModal';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
 
+const DEFAULT_SETTINGS: AppSettings = {
+  appName: 'Daily Translation',
+  appSubtitle: 'Dịch câu mỗi ngày kèm từ vựng gợi ý',
+  appIcon: 'BookOpen',
+  appIconType: 'lucide',
+};
+
 export default function App() {
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [questions, setQuestions] = useState<Question[]>(INITIAL_QUESTIONS);
+  const [questions, setQuestions] = useState<Question[]>(() =>
+    getDailyQuestions(INITIAL_QUESTIONS)
+  );
   const [todayCount, setTodayCount] = useState<number>(0);
   const [currentView, setCurrentView] = useState<'study' | 'admin'>('study');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -20,6 +30,19 @@ export default function App() {
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isAiGenerating, setIsAiGenerating] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Ngày hiện tại
+  const [todayDateString] = useState<string>(() => new Date().toISOString().split('T')[0]);
+
+  // Cài đặt tên và biểu tượng ứng dụng
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    try {
+      const saved = localStorage.getItem('app_custom_settings');
+      if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
+    } catch (e) {}
+    return DEFAULT_SETTINGS;
+  });
+
 
   // Danh sách học viên mẫu cho AdminView
   const [allProfiles, setAllProfiles] = useState<Profile[]>([
@@ -70,6 +93,32 @@ export default function App() {
     }
   }, []);
 
+  // 1.1 Tải cài đặt thương hiệu ứng dụng (Tên & Biểu tượng)
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/settings');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.settings) {
+            setSettings((prev) => ({ ...prev, ...data.settings }));
+            localStorage.setItem('app_custom_settings', JSON.stringify(data.settings));
+          }
+        }
+      } catch (e) {
+        console.warn('Lỗi đọc settings từ server:', e);
+      }
+    }
+    loadSettings();
+  }, []);
+
+  // Cập nhật tiêu đề trang theo tên ứng dụng
+  useEffect(() => {
+    if (settings.appName) {
+      document.title = `${settings.appName} - Học Dịch Tiếng Anh Mỗi Ngày`;
+    }
+  }, [settings.appName]);
+
   // 2. Tải profile nếu có phiên đăng nhập
   const initUserSession = useCallback(async () => {
     if (isSupabaseConfigured) {
@@ -98,9 +147,24 @@ export default function App() {
     initUserSession();
   }, [initUserSession]);
 
-  // 3. Tải câu hỏi từ Supabase nếu có
+  // 3. Tải câu hỏi từ API server hoặc Supabase (tự động đảo theo ngày)
   useEffect(() => {
     async function loadQuestions() {
+      // Ưu tiên tải từ API server (hỗ trợ đảo câu theo ngày queryDate)
+      try {
+        const res = await fetch(`/api/questions?date=${todayDateString}&mode=daily`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && Array.isArray(json.questions) && json.questions.length > 0) {
+            setQuestions(json.questions as Question[]);
+            return;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('Không thể tải từ /api/questions, thử trực tiếp Supabase:', apiErr);
+      }
+
+      // Dự phòng tải trực tiếp từ Supabase Client nếu có
       if (isSupabaseConfigured) {
         try {
           const { data, error } = await supabase
@@ -109,15 +173,21 @@ export default function App() {
             .order('id', { ascending: true });
 
           if (!error && data && data.length > 0) {
-            setQuestions(data as Question[]);
+            // Đảo câu theo ngày
+            setQuestions(getDailyQuestions(data as Question[], todayDateString));
+            return;
           }
         } catch (e) {
           console.warn('Lỗi tải câu hỏi từ Supabase:', e);
         }
       }
+
+      // Fallback câu mặc định đảo theo ngày
+      setQuestions(getDailyQuestions(INITIAL_QUESTIONS, todayDateString));
     }
     loadQuestions();
-  }, []);
+  }, [todayDateString]);
+
 
   // 4. Xử lý khi hoàn thành 1 câu
   const handleQuestionCompleted = async (questionId: number) => {
@@ -164,16 +234,24 @@ export default function App() {
     }
   };
 
-  // 6. Kích hoạt Gemini AI sinh câu mới
-  const handleQuickAiGenerate = async () => {
+  // 6. Kích hoạt Gemini AI sinh câu mới (hỗ trợ cả chuyên ngành)
+  const handleQuickAiGenerate = async (categoryInput?: unknown) => {
     setIsAiGenerating(true);
     try {
-      const res = await fetch('/api/cron/generate?key=my_super_secret_cron_token_12345', {
+      // Đảm bảo chỉ nhận string hợp lệ, tránh nhận synthetic click event từ React button
+      const validCategory =
+        typeof categoryInput === 'string' && categoryInput.trim().length > 0
+          ? categoryInput.trim().toLowerCase()
+          : undefined;
+
+      const catParam = validCategory ? `&category=${encodeURIComponent(validCategory)}` : '';
+      const res = await fetch(`/api/cron/generate?key=my_super_secret_cron_token_12345${catParam}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: 'Bearer my_super_secret_cron_token_12345',
         },
+        body: JSON.stringify({ category: validCategory }),
       });
 
       const json = await res.json();
@@ -183,12 +261,21 @@ export default function App() {
 
       if (json.data && Array.isArray(json.data) && json.data.length > 0) {
         // Nạp thêm vào danh sách câu hỏi hiện tại
-        setQuestions((prev) => [...prev, ...json.data]);
+        setQuestions((prev) => [...json.data, ...prev]);
       }
+
+      const catLabel =
+        validCategory === 'it'
+          ? 'chuyên ngành IT & Tech'
+          : validCategory === 'business'
+          ? 'chuyên ngành Kinh Doanh & Sales'
+          : validCategory === 'hospitality'
+          ? 'chuyên ngành Khách Sạn & Du Lịch'
+          : 'giao tiếp chung';
 
       setToastMessage({
         type: 'success',
-        text: `Gemini AI đã sinh thành công 10 câu mới và nạp vào danh sách học!`,
+        text: `Gemini AI đã sinh thành công 10 câu mới thuộc ${catLabel}!`,
       });
     } catch (err: any) {
       setToastMessage({
@@ -201,6 +288,8 @@ export default function App() {
     }
   };
 
+
+
   const handleSignOut = async () => {
     if (isSupabaseConfigured) {
       await supabase.auth.signOut();
@@ -208,6 +297,41 @@ export default function App() {
     setProfile(null);
     setCurrentView('study');
     setToastMessage({ type: 'success', text: 'Đã đăng xuất thành công.' });
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // 7. Cập nhật và lưu cài đặt Tên + Biểu tượng từ trang Quản trị
+  const handleSaveSettings = async (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    localStorage.setItem('app_custom_settings', JSON.stringify(newSettings));
+
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSettings),
+      });
+      if (!res.ok) {
+        throw new Error('Lỗi từ máy chủ khi lưu cài đặt.');
+      }
+    } catch (err: any) {
+      console.warn('Lưu lên máy chủ gặp trục trặc, dữ liệu vẫn được lưu tại trình duyệt:', err);
+    }
+
+    setToastMessage({
+      type: 'success',
+      text: `Đã đổi tên ứng dụng thành "${newSettings.appName}" và cập nhật biểu tượng thành công!`,
+    });
+    setTimeout(() => setToastMessage(null), 5000);
+  };
+
+  // 8. Đảo ngẫu nhiên câu hỏi ngay lập tức
+  const handleShuffleQuestions = () => {
+    setQuestions((prev) => shuffleQuestions(prev));
+    setToastMessage({
+      type: 'success',
+      text: 'Đã đảo ngẫu nhiên toàn bộ danh sách câu hỏi!',
+    });
     setTimeout(() => setToastMessage(null), 3000);
   };
 
@@ -245,6 +369,7 @@ export default function App() {
         onSignOut={handleSignOut}
         onQuickAiGenerate={handleQuickAiGenerate}
         isAiGenerating={isAiGenerating}
+        settings={settings}
       />
 
       {/* MAIN CONTAINER */}
@@ -256,6 +381,8 @@ export default function App() {
             todayCount={todayCount}
             onQuestionCompleted={handleQuestionCompleted}
             onOpenAuth={() => setIsAuthOpen(true)}
+            onShuffle={handleShuffleQuestions}
+            todayDateString={todayDateString}
           />
         ) : (
           <AdminView
@@ -265,9 +392,12 @@ export default function App() {
             onBackToStudy={() => setCurrentView('study')}
             onAiGenerateQuestions={handleQuickAiGenerate}
             isGeneratingAi={isAiGenerating}
+            settings={settings}
+            onSaveSettings={handleSaveSettings}
           />
         )}
       </main>
+
 
       {/* FOOTER */}
       <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-400">

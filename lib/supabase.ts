@@ -10,13 +10,17 @@ export interface Profile {
   created_at: string;
 }
 
+export type CareerCategory = 'general' | 'it' | 'business' | 'hospitality';
+
 export interface Question {
   id: number;
   vi: string;
   hints: string;
   answers: string[];
-  created_date: string;
+  created_date?: string;
+  category?: CareerCategory;
 }
+
 
 export interface StudyLog {
   id: number;
@@ -24,6 +28,14 @@ export interface StudyLog {
   question_id: number;
   completed_at: string;
 }
+
+export interface AppSettings {
+  appName: string;
+  appSubtitle: string;
+  appIcon: string;
+  appIconType: 'lucide' | 'emoji';
+}
+
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';

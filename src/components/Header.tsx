@@ -1,7 +1,7 @@
 import React from 'react';
-import { Profile } from '../types';
+import { Profile, AppSettings } from '../types';
+import { AppIcon } from './AppIcon';
 import {
-  BookOpen,
   Crown,
   ShieldCheck,
   LogIn,
@@ -21,6 +21,7 @@ interface HeaderProps {
   onSignOut: () => void;
   onQuickAiGenerate?: () => void;
   isAiGenerating?: boolean;
+  settings?: AppSettings;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -34,9 +35,15 @@ export const Header: React.FC<HeaderProps> = ({
   onSignOut,
   onQuickAiGenerate,
   isAiGenerating,
+  settings,
 }) => {
   const isVip = profile?.is_vip ?? false;
   const isAdmin = profile?.role === 'admin';
+
+  const appName = settings?.appName || 'Daily Translation';
+  const appSubtitle = settings?.appSubtitle || 'Dịch câu mỗi ngày kèm từ vựng gợi ý';
+  const appIcon = settings?.appIcon || 'BookOpen';
+  const appIconType = settings?.appIconType || 'lucide';
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 sm:px-6 shadow-xs">
@@ -45,29 +52,32 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-2.5">
           <button
             onClick={() => onViewChange('study')}
-            className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-100 transition-transform active:scale-95 cursor-pointer"
+            className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-100 transition-transform active:scale-95 cursor-pointer overflow-hidden shrink-0"
+            title={appName}
           >
-            <BookOpen className="w-5 h-5" />
+            <AppIcon icon={appIcon} type={appIconType} className="w-5 h-5 text-white" />
           </button>
           <div>
             <div className="flex items-center gap-2">
               <h1
                 onClick={() => onViewChange('study')}
-                className="text-base sm:text-lg font-bold text-slate-900 leading-tight cursor-pointer hover:text-indigo-600 transition-colors"
+                className="text-base sm:text-lg font-bold text-slate-900 leading-tight cursor-pointer hover:text-indigo-600 transition-colors truncate max-w-[160px] sm:max-w-[280px]"
+                title={appName}
               >
-                Daily Translation
+                {appName}
               </h1>
               <span className="hidden sm:inline-block text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
                 VN ➔ EN
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 hidden xs:block">
-              Dịch câu mỗi ngày kèm từ vựng gợi ý
+            <p className="text-[11px] text-slate-500 hidden xs:block truncate max-w-[240px] sm:max-w-[360px]">
+              {appSubtitle}
             </p>
           </div>
         </div>
 
         {/* Right Actions */}
+
         <div className="flex items-center gap-1.5 sm:gap-2.5">
           {/* Nút xem SQL & Mã Nguồn Next.js */}
           <button
@@ -82,7 +92,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Quick AI Question Generator Button */}
           {onQuickAiGenerate && (
             <button
-              onClick={onQuickAiGenerate}
+              onClick={() => onQuickAiGenerate()}
               disabled={isAiGenerating}
               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
               title="Kích hoạt Gemini AI sinh 10 câu mới"
