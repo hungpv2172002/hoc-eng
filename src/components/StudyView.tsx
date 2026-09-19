@@ -54,6 +54,7 @@ interface StudyViewProps {
   onOpenAuth: () => void;
   onShuffle?: () => void;
   todayDateString?: string;
+  onOpenBattle?: () => void;
 }
 
 export function normalizeSentence(text: string): string {
@@ -78,6 +79,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
   onOpenAuth,
   onShuffle,
   todayDateString,
+  onOpenBattle,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
@@ -346,6 +348,37 @@ export const StudyView: React.FC<StudyViewProps> = ({
         onSelectLevel={handleSelectLevel}
         levelCounts={levelCounts}
       />
+
+      {/* BANNER MINI-GAME ĐẤU BOSS */}
+      {onOpenBattle && (
+        <div className="p-4 bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 rounded-3xl text-white shadow-md flex flex-wrap items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-2xl shadow-inner shrink-0">
+              ⚔️
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-sm sm:text-base">Mini-Game: Tháp Ma Vương</span>
+                <span className="px-2 py-0.5 rounded-full bg-yellow-300 text-amber-950 font-black text-[10px] uppercase shadow-2xs">
+                  Mới
+                </span>
+              </div>
+              <p className="text-xs text-white/90">
+                Luyện dịch câu để vung kiếm chém quái, vượt 6 tầng tháp và rinh vàng!
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onOpenBattle}
+            className="px-4 py-2 bg-white hover:bg-amber-50 text-slate-900 rounded-2xl font-black text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
+          >
+            <span>Vào đấu Boss ngay</span>
+            <ChevronRight className="w-4 h-4 text-rose-600" />
+          </button>
+        </div>
+      )}
 
       {/* THÔNG BÁO KHI ĐANG LỌC THEO TRÌNH ĐỘ */}
       {selectedLevel !== 'all' && (

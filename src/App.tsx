@@ -6,6 +6,7 @@ import { getDailyQuestions, shuffleQuestions } from './lib/questionRotation';
 import { Header } from './components/Header';
 import { StudyView } from './components/StudyView';
 import { AdminView } from './components/AdminView';
+import { TowerBattleView } from './components/TowerBattleView';
 import { AuthModal } from './components/AuthModal';
 import { ProfileModal } from './components/ProfileModal';
 import { GuideModal } from './components/GuideModal';
@@ -51,7 +52,7 @@ export default function App() {
     getDailyQuestions(INITIAL_QUESTIONS)
   );
   const [todayCount, setTodayCount] = useState<number>(0);
-  const [currentView, setCurrentView] = useState<'study' | 'admin'>('study');
+  const [currentView, setCurrentView] = useState<'study' | 'admin' | 'battle'>('study');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -531,6 +532,12 @@ export default function App() {
             }}
             onShuffle={handleShuffleQuestions}
             todayDateString={todayDateString}
+            onOpenBattle={() => setCurrentView('battle')}
+          />
+        ) : currentView === 'battle' ? (
+          <TowerBattleView
+            profile={profile}
+            onBackToStudy={() => setCurrentView('study')}
           />
         ) : (
           <AdminView

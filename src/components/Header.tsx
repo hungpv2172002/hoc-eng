@@ -13,8 +13,8 @@ import {
 interface HeaderProps {
   profile: Profile | null;
   todayCount: number;
-  currentView: 'study' | 'admin';
-  onViewChange: (view: 'study' | 'admin') => void;
+  currentView: 'study' | 'admin' | 'battle';
+  onViewChange: (view: 'study' | 'admin' | 'battle') => void;
   onOpenAuth: (mode?: 'login' | 'register') => void;
   onOpenProfile: () => void;
   onOpenGuide: () => void;
@@ -78,6 +78,22 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2.5">
+          {/* Nút Chế độ Đấu Boss (Tháp Ma Vương) */}
+          <button
+            onClick={() => onViewChange(currentView === 'battle' ? 'study' : 'battle')}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border shadow-2xs active:scale-95 ${
+              currentView === 'battle'
+                ? 'bg-rose-600 text-white border-rose-600 shadow-rose-200 ring-2 ring-rose-200'
+                : 'bg-gradient-to-r from-amber-50 to-rose-50 hover:from-amber-100 hover:to-rose-100 text-rose-700 border-rose-200'
+            }`}
+            title="Thử thách Tháp Ma Vương: Dịch câu đánh Boss"
+          >
+            <span className="text-sm leading-none">⚔️</span>
+            <span className="hidden xs:inline">
+              {currentView === 'battle' ? 'Về phòng học' : 'Đấu Boss'}
+            </span>
+          </button>
+
           {/* Quick AI Question Generator Button (chỉ hiển thị khi đã đăng nhập hoặc là admin) */}
           {onQuickAiGenerate && isAdmin && (
             <button
