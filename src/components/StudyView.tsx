@@ -584,14 +584,14 @@ export const StudyView: React.FC<StudyViewProps> = ({
           <div>
             <strong className="font-bold block">Bạn đang trải nghiệm dưới dạng Khách</strong>
             <span className="text-indigo-700">
-              Đăng nhập qua Gmail OTP để nâng cấp VIP và mở khóa trọn bộ 3 ngành nghề IT, Kinh Doanh, Khách Sạn!
+              Đăng nhập hoặc đăng ký tài khoản để lưu tiến độ học tập và mở khóa trọn bộ các ngành nghề IT, Kinh Doanh, Khách Sạn!
             </span>
           </div>
           <button
             onClick={onOpenAuth}
             className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs shrink-0 cursor-pointer"
           >
-            Đăng nhập ngay
+            Đăng nhập / Đăng ký
           </button>
         </div>
       )}

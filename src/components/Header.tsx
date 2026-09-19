@@ -6,7 +6,7 @@ import {
   ShieldCheck,
   LogIn,
   LogOut,
-  FileCode,
+  UserPlus,
   Sparkles,
 } from 'lucide-react';
 
@@ -15,7 +15,7 @@ interface HeaderProps {
   todayCount: number;
   currentView: 'study' | 'admin';
   onViewChange: (view: 'study' | 'admin') => void;
-  onOpenAuth: () => void;
+  onOpenAuth: (mode?: 'login' | 'register') => void;
   onOpenProfile: () => void;
   onOpenGuide: () => void;
   onSignOut: () => void;
@@ -31,7 +31,7 @@ export const Header: React.FC<HeaderProps> = ({
   onViewChange,
   onOpenAuth,
   onOpenProfile,
-  onOpenGuide,
+  onOpenGuide: _onOpenGuide,
   onSignOut,
   onQuickAiGenerate,
   isAiGenerating,
@@ -77,20 +77,9 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Right Actions */}
-
         <div className="flex items-center gap-1.5 sm:gap-2.5">
-          {/* Nút xem SQL & Mã Nguồn Next.js */}
-          <button
-            onClick={onOpenGuide}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors cursor-pointer"
-            title="Xem file SQL và hướng dẫn mã nguồn Next.js"
-          >
-            <FileCode className="w-3.5 h-3.5 text-indigo-600" />
-            <span className="hidden md:inline">Mã nguồn & SQL</span>
-          </button>
-
-          {/* Quick AI Question Generator Button */}
-          {onQuickAiGenerate && (
+          {/* Quick AI Question Generator Button (chỉ hiển thị khi đã đăng nhập hoặc là admin) */}
+          {onQuickAiGenerate && isAdmin && (
             <button
               onClick={() => onQuickAiGenerate()}
               disabled={isAiGenerating}
@@ -106,11 +95,11 @@ export const Header: React.FC<HeaderProps> = ({
 
           {profile ? (
             <>
-              {/* Nút vào trang Admin (nếu là Admin) */}
+              {/* Nút vào trang Quản trị (Chỉ dành riêng cho Admin hungpv2172002@gmail.com) */}
               {isAdmin && (
                 <button
                   onClick={() => onViewChange(currentView === 'admin' ? 'study' : 'admin')}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
                     currentView === 'admin'
                       ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
                       : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200'
@@ -167,21 +156,31 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Nút Đăng xuất */}
               <button
                 onClick={onSignOut}
-                className="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors"
+                className="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer"
                 title="Đăng xuất"
               >
                 <LogOut className="w-4 h-4" />
               </button>
             </>
           ) : (
-            /* Nút Đăng nhập */
-            <button
-              onClick={onOpenAuth}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-100 hover:shadow-indigo-200 transition-all cursor-pointer"
-            >
-              <LogIn className="w-4 h-4" />
-              <span>Đăng nhập OTP</span>
-            </button>
+            /* Khi chưa đăng nhập: 2 nút riêng biệt Đăng nhập và Đăng ký */
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <button
+                onClick={() => onOpenAuth('login')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+              >
+                <LogIn className="w-3.5 h-3.5 text-slate-500" />
+                <span>Đăng nhập</span>
+              </button>
+
+              <button
+                onClick={() => onOpenAuth('register')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-100 hover:shadow-indigo-200 transition-all cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Đăng ký</span>
+              </button>
+            </div>
           )}
         </div>
       </div>

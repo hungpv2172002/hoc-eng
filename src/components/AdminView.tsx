@@ -17,6 +17,7 @@ import {
   Settings,
   Save,
   Palette,
+  FileCode,
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -28,6 +29,7 @@ interface AdminViewProps {
   isGeneratingAi: boolean;
   settings?: AppSettings;
   onSaveSettings?: (newSettings: AppSettings) => Promise<void>;
+  onOpenGuide?: () => void;
 }
 
 export const AdminView: React.FC<AdminViewProps> = ({
@@ -39,6 +41,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   isGeneratingAi,
   settings,
   onSaveSettings,
+  onOpenGuide,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -193,12 +196,24 @@ export const AdminView: React.FC<AdminViewProps> = ({
           </div>
         </div>
 
-        <button
-          onClick={onBackToStudy}
-          className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition-colors cursor-pointer"
-        >
-          Vào phòng học
-        </button>
+        <div className="flex items-center gap-2">
+          {onOpenGuide && (
+            <button
+              onClick={onOpenGuide}
+              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+              title="Xem mã nguồn & file SQL Supabase"
+            >
+              <FileCode className="w-4 h-4 text-indigo-600" />
+              <span className="hidden sm:inline">Mã SQL Supabase</span>
+            </button>
+          )}
+          <button
+            onClick={onBackToStudy}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs transition-colors cursor-pointer"
+          >
+            Vào phòng học
+          </button>
+        </div>
       </div>
 
       {/* BANNER CÀI ĐẶT THƯƠNG HIỆU: TÊN ỨNG DỤNG & BIỂU TƯỢNG (ICON) */}

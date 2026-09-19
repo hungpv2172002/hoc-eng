@@ -19,13 +19,27 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export default function App() {
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(() => {
+    try {
+      const saved = localStorage.getItem('translation_user_profile');
+      if (saved) {
+        const parsed: Profile = JSON.parse(saved);
+        if (parsed.email?.toLowerCase() === 'hungpv2172002@gmail.com') {
+          parsed.role = 'admin';
+          parsed.is_vip = true;
+        }
+        return parsed;
+      }
+    } catch (e) {}
+    return null;
+  });
   const [questions, setQuestions] = useState<Question[]>(() =>
     getDailyQuestions(INITIAL_QUESTIONS)
   );
   const [todayCount, setTodayCount] = useState<number>(0);
   const [currentView, setCurrentView] = useState<'study' | 'admin'>('study');
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isAiGenerating, setIsAiGenerating] = useState(false);
@@ -127,6 +141,8 @@ export default function App() {
           data: { session },
         } = await supabase.auth.getSession();
         if (session?.user) {
+          const cleanEmail = session.user.email?.toLowerCase() || '';
+          const isAdmin = cleanEmail === 'hungpv2172002@gmail.com';
           const { data: pData } = await supabase
             .from('profiles')
             .select('*')
@@ -134,7 +150,25 @@ export default function App() {
             .single();
 
           if (pData) {
-            setProfile(pData as Profile);
+            const merged: Profile = {
+              ...(pData as Profile),
+              role: isAdmin ? 'admin' : (pData.role || 'user'),
+              is_vip: isAdmin ? true : (pData.is_vip ?? false),
+            };
+            setProfile(merged);
+            localStorage.setItem('translation_user_profile', JSON.stringify(merged));
+          } else {
+            const merged: Profile = {
+              id: session.user.id,
+              email: cleanEmail,
+              full_name: session.user.user_metadata?.full_name || cleanEmail.split('@')[0],
+              avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}`,
+              role: isAdmin ? 'admin' : 'user',
+              is_vip: isAdmin,
+              created_at: new Date().toISOString(),
+            };
+            setProfile(merged);
+            localStorage.setItem('translation_user_profile', JSON.stringify(merged));
           }
         }
       } catch (err) {
@@ -292,8 +326,11 @@ export default function App() {
 
   const handleSignOut = async () => {
     if (isSupabaseConfigured) {
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {}
     }
+    localStorage.removeItem('translation_user_profile');
     setProfile(null);
     setCurrentView('study');
     setToastMessage({ type: 'success', text: 'Đã đăng xuất thành công.' });
@@ -363,7 +400,10 @@ export default function App() {
         todayCount={todayCount}
         currentView={currentView}
         onViewChange={(view) => setCurrentView(view)}
-        onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenAuth={(mode) => {
+          setAuthModalMode(mode || 'login');
+          setIsAuthOpen(true);
+        }}
         onOpenProfile={() => setIsProfileOpen(true)}
         onOpenGuide={() => setIsGuideOpen(true)}
         onSignOut={handleSignOut}
@@ -380,7 +420,10 @@ export default function App() {
             profile={profile}
             todayCount={todayCount}
             onQuestionCompleted={handleQuestionCompleted}
-            onOpenAuth={() => setIsAuthOpen(true)}
+            onOpenAuth={() => {
+              setAuthModalMode('login');
+              setIsAuthOpen(true);
+            }}
             onShuffle={handleShuffleQuestions}
             todayDateString={todayDateString}
           />
@@ -394,6 +437,7 @@ export default function App() {
             isGeneratingAi={isAiGenerating}
             settings={settings}
             onSaveSettings={handleSaveSettings}
+            onOpenGuide={() => setIsGuideOpen(true)}
           />
         )}
       </main>
@@ -403,28 +447,46 @@ export default function App() {
       <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-400">
         <div className="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p>
-            © 2026 Daily Vietnamese to English Translation Practice • Next.js & Supabase
+            © 2026 {settings.appName} • Luyện dịch Việt ➔ Anh mỗi ngày kèm phản hồi thông minh
           </p>
-          <button
-            onClick={() => setIsGuideOpen(true)}
-            className="text-indigo-600 hover:text-indigo-800 font-semibold underline underline-offset-2 cursor-pointer"
-          >
-            Xem mã nguồn SQL & Hướng dẫn thiết lập
-          </button>
+          <div className="flex items-center gap-4 text-slate-500">
+            <span>Rèn luyện bền bỉ mỗi ngày</span>
+            {profile?.role === 'admin' && (
+              <button
+                onClick={() => setIsGuideOpen(true)}
+                className="text-indigo-600 hover:text-indigo-800 font-semibold underline underline-offset-2 cursor-pointer"
+              >
+                Mã SQL Supabase
+              </button>
+            )}
+          </div>
         </div>
       </footer>
 
       {/* MODALS */}
       <AuthModal
         isOpen={isAuthOpen}
+        initialMode={authModalMode}
         onClose={() => setIsAuthOpen(false)}
         onLoginSuccess={(newProfile) => {
+          if (newProfile.email?.toLowerCase() === 'hungpv2172002@gmail.com') {
+            newProfile.role = 'admin';
+            newProfile.is_vip = true;
+          }
           setProfile(newProfile);
-          // Tự động thêm vào allProfiles nếu chưa có
+          localStorage.setItem('translation_user_profile', JSON.stringify(newProfile));
+          // Tự động thêm hoặc cập nhật trong allProfiles
           setAllProfiles((prev) => {
-            if (prev.some((p) => p.id === newProfile.id)) return prev;
+            if (prev.some((p) => p.id === newProfile.id)) {
+              return prev.map((p) => (p.id === newProfile.id ? newProfile : p));
+            }
             return [newProfile, ...prev];
           });
+          setToastMessage({
+            type: 'success',
+            text: `Chào mừng ${newProfile.full_name || newProfile.email} đã đăng nhập thành công!`,
+          });
+          setTimeout(() => setToastMessage(null), 3000);
         }}
       />
 
