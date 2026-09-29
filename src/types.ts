@@ -146,14 +146,70 @@ export interface StudyLog {
   completed_at: string;
 }
 
+export type ThemeColor = 'indigo' | 'violet' | 'emerald' | 'rose' | 'amber' | 'sky';
+export type BgTheme = 'default' | 'pure-white' | 'warm' | 'dark-slate';
+
 export interface AppSettings {
   appName: string;
   appSubtitle: string;
   appIcon: string;
   appIconType: 'lucide' | 'emoji';
+  themeColor?: ThemeColor;
+  bgTheme?: BgTheme;
+  // Thanh thông báo đầu trang (Announcement Bar)
+  showAnnouncement?: boolean;
+  announcementText?: string;
+  announcementType?: 'info' | 'success' | 'warning' | 'vip';
+  announcementLinkText?: string;
+  // Lời chào & khẩu hiệu Hero
+  heroGreeting?: string;
+  heroSubtext?: string;
+  // Kênh liên hệ & Hotline
+  contactPhone?: string;
+  contactZalo?: string;
   contactEmail?: string;
   contactFacebook?: string;
   contactTiktok?: string;
+  contactTelegram?: string;
+}
+
+// Khách hàng & CRM quản lý bán gói
+export type CustomerStatus =
+  | 'new'           // Lead mới
+  | 'consulting'    // Đang tư vấn
+  | 'converted'     // Đã mua gói VIP
+  | 'vip_lifetime'  // VIP trọn đời
+  | 'callback'      // Hẹn liên hệ lại
+  | 'cancelled';    // Hủy / Không mua
+
+export type CustomerPackage =
+  | 'vip_month'       // Gói VIP 1 Tháng (199.000đ)
+  | 'vip_year'        // Gói VIP 1 Năm (599.000đ)
+  | 'vip_lifetime'    // Gói VIP Trọn Đời (999.000đ)
+  | 'course_it'       // Tiếng Anh IT & Tech (499.000đ)
+  | 'course_business' // Tiếng Anh Kinh Doanh & Sales (499.000đ)
+  | 'custom';         // Tùy chỉnh
+
+export interface Customer {
+  id: string;
+  full_name: string;
+  phone: string;
+  email: string;
+  package_interest: CustomerPackage;
+  status: CustomerStatus;
+  deal_value: number; // VND
+  source: string; // Facebook, TikTok, Zalo, Website, Giới thiệu
+  notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ManagedAccount extends Profile {
+  phone?: string;
+  password?: string;
+  notes?: string;
+  last_login?: string;
+  vip_expires_at?: string;
 }
 
 export interface WordLookupResult {
@@ -171,5 +227,85 @@ export interface WordLookupResult {
   };
   usageTip?: string;
   googleTranslateUrl?: string;
+}
+
+// ================= THI ĐẤU DỊCH 1v1 SONG SONG (DUEL) =================
+export interface DuelParticipant {
+  id: string;
+  name: string;
+  avatar_url?: string;
+  isHost: boolean;
+  score: number;
+  currentQuestionIndex: number;
+  answeredCount: number;
+  isReady: boolean;
+  isFinished: boolean;
+  lastAnswerCorrect?: boolean;
+  lastAnswerText?: string;
+  typingLength?: number;
+}
+
+export interface DuelQuestionItem {
+  id: number;
+  vi: string;
+  hints: string;
+  level?: string;
+  category?: string;
+  answers: string[]; // Chứa đáp án chuẩn
+}
+
+export interface DuelRoomState {
+  roomId: string;
+  status: 'waiting' | 'countdown' | 'in_progress' | 'finished';
+  category: string;
+  questionCount: number;
+  players: Record<string, DuelParticipant>;
+  questions: DuelQuestionItem[];
+  currentRound: number;
+  roundTimerSeconds: number;
+  roundStartedAt?: number;
+  winnerId?: string | null;
+  rematchVotes?: Record<string, boolean>;
+}
+
+export type DuelEmote = '🔥' | '⚡' | '😎' | '😱' | '👏' | '🏆' | '💪' | '⚔️';
+
+export interface Friend {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url?: string;
+  added_at: string;
+  status?: 'online' | 'offline' | 'in_game';
+  is_vip?: boolean;
+}
+
+// ================= HỆ THỐNG HUY HIỆU & THÀNH TỰU (BADGES) =================
+export type BadgeRarity = 'common' | 'rare' | 'epic' | 'legendary';
+
+export interface Badge {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  rarity: BadgeRarity;
+  category: 'streak' | 'battle' | 'study' | 'social';
+  currentValue: number;
+  targetValue: number;
+  isUnlocked: boolean;
+  unlockedAt?: string;
+  badgeTag: string;
+}
+
+export interface UserStats {
+  consecutiveDays: number;
+  lastStudyDate: string;
+  studyDates: string[];
+  totalQuestionsCompleted: number;
+  duelWins: number;
+  towerFloorsCleared: number;
+  wordsLookedUpCount: number;
+  friendsCount: number;
+  unlockedBadgeIds: string[];
 }
 

@@ -15,6 +15,7 @@ import {
   History,
 } from 'lucide-react';
 import { WordLookupResult, Question } from '../types';
+import { recordWordLookup } from '../lib/badgeSystem';
 import { playSpeech } from './AudioButton';
 
 interface WordLookupModalProps {
@@ -109,6 +110,9 @@ export const WordLookupModal: React.FC<WordLookupModalProps> = ({
 
       setResult(data.data);
 
+      // Ghi nhận tra từ vựng cho Huy hiệu Chuyên Gia Từ Vựng
+      recordWordLookup();
+
       // Lưu vào lịch sử tra cứu
       setRecentQueries((prev) => {
         const next = [term, ...prev.filter((q) => q.toLowerCase() !== term.toLowerCase())].slice(0, 8);
@@ -141,32 +145,32 @@ export const WordLookupModal: React.FC<WordLookupModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
       <div
-        className="bg-white w-full max-w-xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
+        className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200 transition-colors"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-indigo-50/80 via-white to-purple-50/60">
+        <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-indigo-50/80 via-white to-purple-50/60 dark:from-slate-850 dark:via-slate-900 dark:to-slate-850">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-md shadow-indigo-200 dark:shadow-none">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-extrabold text-slate-900 text-base sm:text-lg flex items-center gap-2">
+              <h3 className="font-extrabold text-slate-900 dark:text-white text-base sm:text-lg flex items-center gap-2">
                 Trợ Lý Từ Vựng AI
-                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 tracking-wider">
+                <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 tracking-wider">
                   Gemini & Google Dịch
                 </span>
               </h3>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Tra cứu từ/cụm từ bám sát ngữ cảnh câu bạn đang làm
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
             title="Đóng (Esc)"
           >
             <X className="w-5 h-5" />
@@ -177,13 +181,13 @@ export const WordLookupModal: React.FC<WordLookupModalProps> = ({
         <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
           {/* Câu ngữ cảnh đang làm bài */}
           {currentQuestion && (
-            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs flex items-start gap-2.5 text-slate-700">
-              <BookOpen className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs flex items-start gap-2.5 text-slate-700 dark:text-slate-300">
+              <BookOpen className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <span className="font-bold text-slate-900 block mb-0.5">
+                <span className="font-bold text-slate-900 dark:text-white block mb-0.5">
                   Ngữ cảnh câu đang dịch:
                 </span>
-                <p className="text-slate-600 italic line-clamp-2">"{currentQuestion.vi}"</p>
+                <p className="text-slate-600 dark:text-slate-300 italic line-clamp-2">"{currentQuestion.vi}"</p>
               </div>
             </div>
           )}
@@ -202,7 +206,7 @@ export const WordLookupModal: React.FC<WordLookupModalProps> = ({
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 placeholder="Nhập từ hoặc cụm từ bạn chưa biết (Việt hoặc Anh)..."
-                className="w-full pl-10 pr-28 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden transition-all"
+                className="w-full pl-10 pr-28 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-2xl text-sm font-medium text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-950 focus:border-indigo-600 dark:focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 outline-hidden transition-all"
                 autoFocus
               />
               <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
@@ -238,7 +242,7 @@ export const WordLookupModal: React.FC<WordLookupModalProps> = ({
                     key={idx}
                     type="button"
                     onClick={() => handleLookup(item)}
-                    className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 text-xs font-medium transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                    className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-indigo-700 dark:hover:text-white border border-slate-200 dark:border-slate-700 hover:border-indigo-200 text-xs font-medium transition-all cursor-pointer flex items-center gap-1 active:scale-95"
                   >
                     <Search className="w-3 h-3 text-slate-400" />
                     <span>{item}</span>
@@ -250,25 +254,25 @@ export const WordLookupModal: React.FC<WordLookupModalProps> = ({
 
           {/* Lỗi nếu có */}
           {error && (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs">
+            <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-2xl text-rose-800 dark:text-rose-200 text-xs">
               {error}
             </div>
           )}
 
           {/* KẾT QUẢ TRA CỨU TỪ TRỢ LÝ AI */}
           {result && (
-            <div className="p-4 sm:p-5 bg-gradient-to-b from-indigo-50/50 to-white rounded-2xl border border-indigo-200/90 shadow-sm space-y-4 animate-in fade-in slide-in-from-bottom-2">
+            <div className="p-4 sm:p-5 bg-gradient-to-b from-indigo-50/50 to-white dark:from-slate-850 dark:to-slate-900 rounded-2xl border border-indigo-200/90 dark:border-slate-700 shadow-sm space-y-4 animate-in fade-in slide-in-from-bottom-2">
               {/* Từ tiếng Anh & Phát âm */}
-              <div className="flex flex-wrap items-start justify-between gap-2 pb-3 border-b border-indigo-100/80">
+              <div className="flex flex-wrap items-start justify-between gap-2 pb-3 border-b border-indigo-100/80 dark:border-slate-800">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xl sm:text-2xl font-black text-indigo-950 tracking-tight">
+                    <span className="text-xl sm:text-2xl font-black text-indigo-950 dark:text-white tracking-tight">
                       {result.bestMatch}
                     </span>
                     <button
                       type="button"
                       onClick={() => playSpeech(result.bestMatch)}
-                      className="p-1.5 rounded-xl bg-indigo-100 hover:bg-indigo-200 text-indigo-700 transition-colors cursor-pointer"
+                      className="p-1.5 rounded-xl bg-indigo-100 dark:bg-slate-800 hover:bg-indigo-200 dark:hover:bg-slate-700 text-indigo-700 dark:text-indigo-300 transition-colors cursor-pointer"
                       title="Nghe phát âm chuẩn"
                     >
                       <Volume2 className="w-4 h-4" />
@@ -277,12 +281,12 @@ export const WordLookupModal: React.FC<WordLookupModalProps> = ({
 
                   <div className="flex flex-wrap items-center gap-2 mt-1">
                     {result.phonetic && (
-                      <span className="text-xs font-mono font-bold text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200">
+                      <span className="text-xs font-mono font-bold text-indigo-700 dark:text-indigo-300 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-slate-700">
                         {result.phonetic}
                       </span>
                     )}
                     {result.partOfSpeech && (
-                      <span className="text-[11px] font-semibold text-slate-500 italic">
+                      <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 italic">
                         ({result.partOfSpeech})
                       </span>
                     )}
@@ -318,10 +322,10 @@ export const WordLookupModal: React.FC<WordLookupModalProps> = ({
 
               {/* Nghĩa tiếng Việt & Giải thích ngữ cảnh */}
               <div className="space-y-1.5">
-                <div className="text-sm font-bold text-slate-900">
+                <div className="text-sm font-bold text-slate-900 dark:text-white">
                   {result.meaningVi}
                 </div>
-                <p className="text-xs text-slate-600 leading-relaxed bg-white/80 p-2.5 rounded-xl border border-slate-100">
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed bg-white/80 dark:bg-slate-800/80 p-2.5 rounded-xl border border-slate-100 dark:border-slate-700">
                   {result.explanation}
                 </p>
               </div>

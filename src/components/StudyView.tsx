@@ -57,6 +57,7 @@ interface StudyViewProps {
   onShuffle?: () => void;
   todayDateString?: string;
   onOpenBattle?: () => void;
+  onOpenDuel?: () => void;
 }
 
 export function normalizeSentence(text: string): string {
@@ -82,6 +83,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
   onShuffle,
   todayDateString,
   onOpenBattle,
+  onOpenDuel,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
@@ -384,6 +386,37 @@ export const StudyView: React.FC<StudyViewProps> = ({
         levelCounts={levelCounts}
       />
 
+      {/* BANNER MINI-GAME ĐẤU TRƯỜNG 1V1 (THÁCH ĐẤU BẠN BÈ) */}
+      {onOpenDuel && (
+        <div className="p-3.5 sm:p-4 bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 rounded-2xl sm:rounded-3xl text-white shadow-md flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in w-full min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-xl shadow-inner shrink-0 animate-pulse">
+              ⚡
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="font-black text-xs sm:text-base truncate">Đấu Trường 1v1 Trực Tuyến</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white font-black text-[9px] uppercase shadow-2xs shrink-0 animate-bounce">
+                  Song song
+                </span>
+              </div>
+              <p className="text-[11px] sm:text-xs text-white/90 line-clamp-1 sm:line-clamp-none">
+                Thách đấu bạn bè hoặc tìm đối thủ online cùng thi dịch câu song song tính điểm!
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onOpenDuel}
+            className="px-3.5 py-1.5 sm:px-4 sm:py-2 bg-white hover:bg-indigo-50 text-indigo-900 rounded-xl font-black text-xs shadow-md transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
+          >
+            <span>Thách đấu ngay</span>
+            <ChevronRight className="w-3.5 h-3.5 text-indigo-600" />
+          </button>
+        </div>
+      )}
+
       {/* BANNER MINI-GAME ĐẤU BOSS */}
       {onOpenBattle && (
         <div className="p-3.5 sm:p-4 bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 rounded-2xl sm:rounded-3xl text-white shadow-md flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in w-full min-w-0">
@@ -506,20 +539,20 @@ export const StudyView: React.FC<StudyViewProps> = ({
           </div>
         </div>
       ) : !currentQuestion ? (
-        <div className="text-center py-16 bg-white rounded-3xl border border-slate-200 w-full min-w-0">
-          <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mx-auto mb-3" />
-          <p className="text-slate-500 font-medium">Đang tải danh sách câu hỏi...</p>
+        <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 w-full min-w-0">
+          <RefreshCw className="w-8 h-8 text-indigo-600 dark:text-indigo-400 animate-spin mx-auto mb-3" />
+          <p className="text-slate-500 dark:text-slate-400 font-medium">Đang tải danh sách câu hỏi...</p>
         </div>
       ) : (
         /* 2. GIAO DIỆN HỌC BÀI */
         <div className="space-y-4 sm:space-y-5 w-full min-w-0">
           {/* Thanh trạng thái ngày & Đảo ngẫu nhiên */}
-          <div className="bg-white/80 backdrop-blur-xs border border-slate-200/80 rounded-2xl px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shadow-2xs w-full min-w-0">
-            <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600 min-w-0">
-              <span className="p-1 rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
+          <div className="bg-white/80 dark:bg-slate-900/90 backdrop-blur-xs border border-slate-200/80 dark:border-slate-800 rounded-2xl px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shadow-2xs w-full min-w-0 transition-colors">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600 dark:text-slate-300 min-w-0">
+              <span className="p-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 shrink-0">
                 <CalendarDays className="w-3.5 h-3.5" />
               </span>
-              <span className="font-semibold text-slate-800 truncate">
+              <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
                 {formatFriendlyDate(todayDateString)}
               </span>
             </div>
@@ -528,28 +561,28 @@ export const StudyView: React.FC<StudyViewProps> = ({
               <button
                 type="button"
                 onClick={handleManualShuffle}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 font-semibold transition-all cursor-pointer text-xs active:scale-95 shrink-0 touch-press"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-300 border border-slate-200 dark:border-slate-700 hover:border-indigo-200 font-semibold transition-all cursor-pointer text-xs active:scale-95 shrink-0 touch-press"
                 title="Bấm để đảo ngẫu nhiên toàn bộ thứ tự câu hỏi ngay lập tức"
               >
-                <Shuffle className="w-3.5 h-3.5 text-indigo-500" />
+                <Shuffle className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
                 <span>Đảo ngẫu nhiên</span>
               </button>
             )}
           </div>
 
           {/* Thanh chỉ số & Tiến độ (RESPONSIVE CHUẨN, KHÔNG BỊ TRÀN NGANG) */}
-          <div className="flex flex-wrap items-center justify-between text-xs font-semibold text-slate-500 px-0.5 gap-2 w-full min-w-0">
+          <div className="flex flex-wrap items-center justify-between text-xs font-semibold text-slate-500 dark:text-slate-400 px-0.5 gap-2 w-full min-w-0">
             <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-              <span className="px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-bold shrink-0">
+              <span className="px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-bold shrink-0">
                 CÂU {currentIndex + 1}/{filteredQuestions.length}
               </span>
-              <span className="px-1.5 py-0.5 rounded-md bg-violet-100 text-violet-800 font-extrabold text-[11px] font-mono shrink-0">
+              <span className="px-1.5 py-0.5 rounded-md bg-violet-100 dark:bg-violet-950/60 text-violet-800 dark:text-violet-300 font-extrabold text-[11px] font-mono shrink-0">
                 {getQuestionLevel(currentQuestion)}
               </span>
-              <span className="text-slate-700 font-medium truncate max-w-[110px] xs:max-w-[150px] sm:max-w-[220px]">
+              <span className="text-slate-700 dark:text-slate-300 font-medium truncate max-w-[110px] xs:max-w-[150px] sm:max-w-[220px]">
                 {currentCategoryInfo.name}
               </span>
-              <span className="text-slate-400 hidden xs:inline">•</span>
+              <span className="text-slate-400 dark:text-slate-600 hidden xs:inline">•</span>
               <span className="shrink-0 text-[11px] sm:text-xs">
                 {hasVipAccess ? 'VIP Không giới hạn' : `${todayCount}/30 câu`}
               </span>
@@ -558,13 +591,13 @@ export const StudyView: React.FC<StudyViewProps> = ({
             <div className="flex items-center gap-1 shrink-0 ml-auto">
               <button
                 onClick={handlePrev}
-                className="px-2 py-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg text-xs cursor-pointer touch-press"
+                className="px-2 py-1 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-xs cursor-pointer touch-press"
               >
                 Câu trước
               </button>
               <button
                 onClick={handleNext}
-                className="px-2 py-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg text-xs font-semibold cursor-pointer touch-press"
+                className="px-2 py-1 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-lg text-xs font-semibold cursor-pointer touch-press"
               >
                 Câu kế
               </button>
@@ -572,9 +605,9 @@ export const StudyView: React.FC<StudyViewProps> = ({
           </div>
 
           {/* Thanh progress bar */}
-          <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+          <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
             <div
-              className="bg-indigo-600 h-full transition-all duration-300 rounded-full"
+              className="bg-indigo-600 dark:bg-indigo-500 h-full transition-all duration-300 rounded-full"
               style={{
                 width: `${Math.min(100, ((currentIndex + 1) / filteredQuestions.length) * 100)}%`,
               }}
@@ -583,29 +616,29 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
           {/* THẺ HỌC TẬP CHÍNH */}
           <div
-            className={`bg-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-7 shadow-xl transition-all duration-300 border w-full max-w-full overflow-hidden ${
+            className={`bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-3.5 sm:p-7 shadow-xl transition-all duration-300 border w-full max-w-full overflow-hidden ${
               resultState === 'correct'
-                ? 'border-emerald-500 ring-2 sm:ring-4 ring-emerald-100'
+                ? 'border-emerald-500 dark:border-emerald-500 ring-2 sm:ring-4 ring-emerald-100 dark:ring-emerald-950/60'
                 : resultState === 'wrong'
-                ? 'border-rose-400 ring-2 sm:ring-4 ring-rose-100'
-                : 'border-slate-200'
+                ? 'border-rose-400 dark:border-rose-500 ring-2 sm:ring-4 ring-rose-100 dark:ring-rose-950/60'
+                : 'border-slate-200 dark:border-slate-800'
             }`}
           >
             {/* Header thẻ: Ngành nghề & Bộ điều chỉnh tốc độ nghe */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100 w-full min-w-0">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100 dark:border-slate-800 w-full min-w-0">
               <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                 <span
                   className={`text-xs font-bold px-2 py-1 rounded-xl flex items-center gap-1 min-w-0 ${
                     currentQuestion.category && currentQuestion.category !== 'general'
-                      ? 'bg-amber-100 text-amber-900 border border-amber-200/80'
-                      : 'bg-indigo-50 text-indigo-800 border border-indigo-100'
+                      ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800'
+                      : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800'
                   }`}
                 >
-                  {currentQuestion.category === 'it' && <Code2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
-                  {currentQuestion.category === 'business' && <Briefcase className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
-                  {currentQuestion.category === 'hospitality' && <Hotel className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
+                  {currentQuestion.category === 'it' && <Code2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />}
+                  {currentQuestion.category === 'business' && <Briefcase className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />}
+                  {currentQuestion.category === 'hospitality' && <Hotel className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />}
                   {(!currentQuestion.category || currentQuestion.category === 'general') && (
-                    <MessageSquare className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <MessageSquare className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                   )}
                   <span className="truncate max-w-[120px] sm:max-w-none">{currentCategoryInfo.name}</span>
                 </span>
@@ -614,15 +647,15 @@ export const StudyView: React.FC<StudyViewProps> = ({
                     VIP
                   </span>
                 )}
-                <span className="text-xs font-bold px-2 py-1 rounded-xl bg-violet-50 text-violet-800 border border-violet-200/80 flex items-center gap-1 font-mono shrink-0">
+                <span className="text-xs font-bold px-2 py-1 rounded-xl bg-violet-50 dark:bg-violet-950/60 text-violet-800 dark:text-violet-300 border border-violet-200/80 dark:border-violet-800 flex items-center gap-1 font-mono shrink-0">
                   <span>Trình độ {getQuestionLevel(currentQuestion)}</span>
                 </span>
               </div>
 
               {/* BỘ CHỌN TỐC ĐỘ PHÁT ÂM */}
-              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200/80 rounded-xl p-1 text-xs shrink-0">
-                <div className="flex items-center gap-0.5 px-1 text-slate-400 font-semibold text-[10px] sm:text-[11px]">
-                  <Gauge className="w-3 h-3 text-slate-500" />
+              <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 rounded-xl p-1 text-xs shrink-0">
+                <div className="flex items-center gap-0.5 px-1 text-slate-400 dark:text-slate-400 font-semibold text-[10px] sm:text-[11px]">
+                  <Gauge className="w-3 h-3 text-slate-500 dark:text-slate-400" />
                   <span className="hidden xs:inline">Tốc độ:</span>
                 </div>
                 {SPEED_OPTIONS.map((opt) => (
@@ -637,7 +670,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
                     className={`px-1.5 sm:px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       audioSpeed === opt.value
                         ? 'bg-indigo-600 text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                        : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700'
                     }`}
                   >
                     {opt.label}
@@ -649,7 +682,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
             {/* Câu tiếng Việt in đậm */}
             <div className="mb-4 sm:mb-5 w-full min-w-0">
               <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
-                <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
+                <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
                   Dịch sang tiếng Anh:
                 </span>
 
@@ -658,10 +691,10 @@ export const StudyView: React.FC<StudyViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsLookupModalOpen(true)}
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-800 border-indigo-200/90 shadow-2xs active:scale-95 touch-press"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/60 dark:to-purple-950/60 hover:from-indigo-100 hover:to-purple-100 dark:hover:from-indigo-900/80 dark:hover:to-purple-900/80 text-indigo-800 dark:text-indigo-200 border-indigo-200/90 dark:border-indigo-800 shadow-2xs active:scale-95 touch-press"
                     title="Bí từ? Bấm để tra từ vựng bằng AI"
                   >
-                    <Sparkles className="w-3 h-3 text-indigo-600" />
+                    <Sparkles className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
                     <span>Tra từ AI</span>
                   </button>
 
@@ -671,20 +704,20 @@ export const StudyView: React.FC<StudyViewProps> = ({
                     onClick={handleToggleHints}
                     className={`inline-flex items-center gap-1 px-2 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer touch-press ${
                       showHints
-                        ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200 shadow-2xs'
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200'
+                        ? 'bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-900 dark:text-amber-200 border-amber-200 dark:border-amber-800 shadow-2xs'
+                        : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
                     }`}
                     title={showHints ? 'Bấm để ẩn gợi ý' : 'Bấm để hiển thị gợi ý'}
                   >
                     {showHints ? (
                       <>
-                        <EyeOff className="w-3 h-3 text-amber-700" />
+                        <EyeOff className="w-3 h-3 text-amber-700 dark:text-amber-400" />
                         <span>Ẩn gợi ý</span>
                       </>
                     ) : (
                       <>
-                        <Eye className="w-3 h-3 text-indigo-600" />
-                        <span className="text-indigo-700">Hiện gợi ý</span>
+                        <Eye className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                        <span className="text-indigo-700 dark:text-indigo-300">Hiện gợi ý</span>
                       </>
                     )}
                   </button>
@@ -699,23 +732,23 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 </div>
               </div>
 
-              <h2 className="text-lg sm:text-2xl font-extrabold text-slate-900 leading-snug break-words">
+              <h2 className="text-lg sm:text-2xl font-extrabold text-slate-900 dark:text-white leading-snug break-words">
                 {currentQuestion.vi}
               </h2>
             </div>
 
             {/* Hộp gợi ý từ vựng (Hiển thị hoặc Ẩn) */}
             {showHints ? (
-              <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-amber-50/80 border border-amber-200/90 rounded-2xl flex items-start justify-between gap-2.5 shadow-2xs transition-all animate-in fade-in w-full min-w-0">
+              <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/90 dark:border-amber-800/60 rounded-2xl flex items-start justify-between gap-2.5 shadow-2xs transition-all animate-in fade-in w-full min-w-0">
                 <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                  <div className="p-1.5 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5">
+                  <div className="p-1.5 bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 rounded-xl shrink-0 mt-0.5">
                     <Lightbulb className="w-3.5 h-3.5" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <span className="text-xs font-bold text-amber-900 block mb-0.5 uppercase tracking-wide">
+                    <span className="text-xs font-bold text-amber-900 dark:text-amber-200 block mb-0.5 uppercase tracking-wide">
                       Gợi ý từ vựng & cấu trúc:
                     </span>
-                    <p className="text-xs sm:text-sm text-amber-900 font-medium leading-relaxed break-words">
+                    <p className="text-xs sm:text-sm text-amber-900 dark:text-amber-200 font-medium leading-relaxed break-words">
                       {currentQuestion.hints}
                     </p>
                   </div>
@@ -723,7 +756,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 <button
                   type="button"
                   onClick={handleToggleHints}
-                  className="shrink-0 p-1 text-amber-700 hover:text-amber-950 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer text-xs flex items-center gap-1 font-semibold touch-press"
+                  className="shrink-0 p-1 text-amber-700 dark:text-amber-400 hover:text-amber-950 dark:hover:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 rounded-lg transition-colors cursor-pointer text-xs flex items-center gap-1 font-semibold touch-press"
                   title="Ẩn gợi ý"
                 >
                   <EyeOff className="w-3.5 h-3.5" />
@@ -731,16 +764,16 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="mb-4 sm:mb-6 p-3 bg-slate-50/80 border border-dashed border-slate-300 rounded-2xl flex items-center justify-between gap-2 transition-all hover:bg-slate-100/60 animate-in fade-in w-full min-w-0">
+              <div className="mb-4 sm:mb-6 p-3 bg-slate-50/80 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 rounded-2xl flex items-center justify-between gap-2 transition-all hover:bg-slate-100/60 dark:hover:bg-slate-800/80 animate-in fade-in w-full min-w-0">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="p-1 bg-slate-200/80 text-slate-500 rounded-xl shrink-0">
+                  <span className="p-1 bg-slate-200/80 dark:bg-slate-700 text-slate-500 dark:text-slate-400 rounded-xl shrink-0">
                     <Lightbulb className="w-3.5 h-3.5" />
                   </span>
                   <div className="min-w-0">
-                    <span className="text-xs font-bold text-slate-700 block truncate">
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200 block truncate">
                       Gợi ý từ vựng đang được ẩn
                     </span>
-                    <span className="text-[11px] text-slate-500 truncate block">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate block">
                       Tự thử thách khả năng ghi nhớ
                     </span>
                   </div>
@@ -748,7 +781,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 <button
                   type="button"
                   onClick={handleToggleHints}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 font-bold rounded-xl border border-indigo-200 shadow-2xs hover:border-indigo-300 transition-all text-xs cursor-pointer active:scale-95 shrink-0 touch-press"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-indigo-700 dark:text-indigo-300 font-bold rounded-xl border border-indigo-200 dark:border-slate-700 shadow-2xs hover:border-indigo-300 transition-all text-xs cursor-pointer active:scale-95 shrink-0 touch-press"
                 >
                   <Eye className="w-3 h-3" />
                   <span>Hiện</span>
@@ -773,7 +806,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
                     }
                   }}
                   placeholder="Gõ câu dịch tiếng Anh hoặc chạm các từ gợi ý bên dưới..."
-                  className="w-full p-3.5 sm:p-4 pr-10 text-base sm:text-lg bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden transition-all resize-none font-medium leading-relaxed"
+                  className="w-full p-3.5 sm:p-4 pr-10 text-base sm:text-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-950 focus:border-indigo-600 dark:focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 outline-hidden transition-all resize-none font-medium leading-relaxed"
                 />
 
                 {/* Nút xóa nhanh nội dung đã nhập */}
@@ -784,7 +817,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
                       setUserAnswer('');
                       if (resultState !== 'idle') setResultState('idle');
                     }}
-                    className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/80 transition-colors touch-press cursor-pointer"
+                    className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/80 dark:hover:bg-slate-800 transition-colors touch-press cursor-pointer"
                     title="Xóa toàn bộ câu đã nhập"
                   >
                     <X className="w-4 h-4" />
@@ -794,14 +827,14 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
               {/* KHU VỰC TỪ GỢI Ý CHỌN NHANH (GIÚP THAO TÁC TRÊN ĐIỆN THOẠI CỰC MƯỢT) */}
               {wordChips.length > 0 && (
-                <div className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-2xl space-y-2">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <div className="p-3 bg-slate-50/80 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     <span>Chạm từ để thêm nhanh vào câu:</span>
                     {userAnswer.trim() && (
                       <button
                         type="button"
                         onClick={handleRemoveLastWord}
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-rose-600 cursor-pointer touch-press"
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 cursor-pointer touch-press"
                       >
                         <Delete className="w-3 h-3" />
                         <span>Xóa từ cuối</span>
@@ -819,8 +852,8 @@ export const StudyView: React.FC<StudyViewProps> = ({
                           onClick={() => handleChipClick(chip)}
                           className={`min-h-[36px] px-2.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold border transition-all cursor-pointer select-none touch-press ${
                             isUsed
-                              ? 'bg-slate-200/70 text-slate-400 border-slate-300'
-                              : 'bg-white hover:bg-indigo-50 text-slate-800 hover:text-indigo-700 border-slate-200 shadow-2xs active:scale-95'
+                              ? 'bg-slate-200/70 dark:bg-slate-800/80 text-slate-400 dark:text-slate-600 border-slate-300 dark:border-slate-800'
+                              : 'bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 hover:text-indigo-700 dark:hover:text-white border-slate-200 dark:border-slate-700 shadow-2xs active:scale-95'
                           }`}
                         >
                           {chip}
@@ -836,14 +869,14 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsLookupModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer group touch-press"
+                  className="inline-flex items-center gap-1.5 text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-semibold cursor-pointer group touch-press"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-500 group-hover:rotate-12 transition-transform" />
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 group-hover:rotate-12 transition-transform" />
                   <span className="group-hover:underline">Bí từ? Tra nhanh bằng AI</span>
                 </button>
 
                 <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-slate-400 hidden sm:inline">Phát âm mẫu:</span>
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500 hidden sm:inline">Phát âm mẫu:</span>
                   <AudioButton
                     text={currentQuestion.answers[0]}
                     speed={audioSpeed}
@@ -856,14 +889,14 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
               {/* Thông báo kết quả so khớp */}
               {resultState === 'correct' && (
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-900 text-sm flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
-                  <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl text-emerald-900 dark:text-emerald-200 text-sm flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                  <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                   <div className="flex-1 flex items-center justify-between">
                     <div>
-                      <strong className="font-bold text-emerald-900 block text-base">
+                      <strong className="font-bold text-emerald-900 dark:text-emerald-100 block text-base">
                         Chính xác! Xuất sắc lắm! 🎉
                       </strong>
-                      <span className="text-xs text-emerald-700">
+                      <span className="text-xs text-emerald-700 dark:text-emerald-300">
                         Đang tự động chuyển sang câu tiếp theo...
                       </span>
                     </div>
@@ -878,13 +911,13 @@ export const StudyView: React.FC<StudyViewProps> = ({
               )}
 
               {resultState === 'wrong' && (
-                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-900 text-sm flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
-                  <XCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div className="p-4 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-2xl text-rose-900 dark:text-rose-200 text-sm flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
+                  <XCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                   <div className="space-y-1.5 flex-1">
-                    <strong className="font-bold text-rose-900 block">
+                    <strong className="font-bold text-rose-900 dark:text-rose-100 block">
                       Chưa chính xác, hãy thử lại hoặc xem câu mẫu:
                     </strong>
-                    <div className="flex items-center justify-between p-2.5 bg-white/90 border border-rose-200 rounded-xl font-mono text-xs text-rose-800">
+                    <div className="flex items-center justify-between p-2.5 bg-white/90 dark:bg-slate-900/90 border border-rose-200 dark:border-rose-800 rounded-xl font-mono text-xs text-rose-800 dark:text-rose-300">
                       <span>"{currentQuestion.answers[0]}"</span>
                       <AudioButton
                         text={currentQuestion.answers[0]}
@@ -902,7 +935,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 <button
                   type="button"
                   onClick={handleNext}
-                  className="min-h-[48px] px-4 py-3 border border-slate-200 text-slate-600 hover:text-slate-800 font-semibold rounded-2xl hover:bg-slate-50 transition-colors text-sm cursor-pointer touch-press shrink-0"
+                  className="min-h-[48px] px-4 py-3 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-white font-semibold rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-sm cursor-pointer touch-press shrink-0"
                 >
                   Bỏ qua câu này
                 </button>
@@ -910,7 +943,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 <button
                   type="submit"
                   disabled={!userAnswer.trim() || submitting}
-                  className="min-h-[48px] flex-1 py-3 px-6 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-2xl shadow-md shadow-indigo-100 hover:shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer text-base touch-press"
+                  className="min-h-[48px] flex-1 py-3 px-6 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-2xl shadow-md shadow-indigo-100 dark:shadow-none hover:shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer text-base touch-press"
                 >
                   {submitting ? (
                     <RefreshCw className="w-5 h-5 animate-spin" />
@@ -929,10 +962,10 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
       {/* Thông báo nếu người dùng chưa đăng nhập */}
       {!profile && (
-        <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-2xl flex items-center justify-between gap-3 text-xs text-indigo-900">
+        <div className="p-4 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-2xl flex items-center justify-between gap-3 text-xs text-indigo-900 dark:text-indigo-200">
           <div>
             <strong className="font-bold block">Bạn đang trải nghiệm dưới dạng Khách</strong>
-            <span className="text-indigo-700">
+            <span className="text-indigo-700 dark:text-indigo-300">
               Đăng nhập hoặc đăng ký tài khoản để lưu tiến độ học tập và mở khóa trọn bộ các ngành nghề IT, Kinh Doanh, Khách Sạn!
             </span>
           </div>

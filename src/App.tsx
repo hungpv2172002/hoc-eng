@@ -7,20 +7,38 @@ import { Header } from './components/Header';
 import { StudyView } from './components/StudyView';
 import { AdminView } from './components/AdminView';
 import { TowerBattleView } from './components/TowerBattleView';
+import { DuelBattleView } from './components/DuelBattleView';
 import { AuthModal } from './components/AuthModal';
 import { ProfileModal } from './components/ProfileModal';
+import { FriendsModal } from './components/FriendsModal';
 import { GuideModal } from './components/GuideModal';
 import { FooterContact } from './components/FooterContact';
 import { CheckCircle2, AlertCircle } from 'lucide-react';
+import confetti from 'canvas-confetti';
+import { Friend } from './types';
+import { getFriendsList } from './lib/friendsStorage';
+import { recordQuestionCompleted } from './lib/badgeSystem';
+import { playVictorySound } from './lib/soundFx';
 
 const DEFAULT_SETTINGS: AppSettings = {
   appName: 'Dịch Mỗi Ngày',
   appSubtitle: 'Dịch câu mỗi ngày kèm từ vựng gợi ý',
   appIcon: '🎯',
   appIconType: 'emoji',
+  themeColor: 'indigo',
+  bgTheme: 'default',
+  showAnnouncement: true,
+  announcementText: '🔥 Khuyến mãi VIP Trọn Đời: Mở khóa toàn bộ chuyên ngành IT, Kinh Doanh & Du Lịch!',
+  announcementType: 'vip',
+  announcementLinkText: 'Nâng cấp VIP',
+  heroGreeting: 'Luyện dịch mỗi ngày để phản xạ tiếng Anh tự nhiên',
+  heroSubtext: 'Học dịch từng câu, tra từ vựng thông minh và thi đấu Boss tiếng Anh',
+  contactPhone: '0987.654.321',
+  contactZalo: 'https://zalo.me/0987654321',
   contactEmail: 'hungpv2172002@gmail.com',
   contactFacebook: 'https://facebook.com',
   contactTiktok: 'https://tiktok.com',
+  contactTelegram: '',
 };
 
 export default function App() {
@@ -52,16 +70,80 @@ export default function App() {
     getDailyQuestions(INITIAL_QUESTIONS)
   );
   const [todayCount, setTodayCount] = useState<number>(0);
-  const [currentView, setCurrentView] = useState<'study' | 'admin' | 'battle'>('study');
+
+  // Nhận mã phòng nếu mở qua liên kết thách đấu (?duel=DUEL-xxxx hoặc ?room=DUEL-xxxx)
+  const [initialDuelRoomId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const duel = params.get('duel') || params.get('room');
+        if (duel) return duel.toUpperCase().trim();
+      } catch (e) {}
+    }
+    return null;
+  });
+
+  const [currentView, setCurrentView] = useState<'study' | 'admin' | 'battle' | 'duel'>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('duel') || params.get('room')) {
+          return 'duel';
+        }
+      } catch (e) {}
+    }
+    return 'study';
+  });
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<'login' | 'register'>('login');
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [isFriendsOpen, setIsFriendsOpen] = useState(false);
+  const [friends, setFriends] = useState<Friend[]>(() => getFriendsList(profile?.email));
   const [isAiGenerating, setIsAiGenerating] = useState(false);
+
+  // Cập nhật danh sách bạn bè khi đổi tài khoản
+  useEffect(() => {
+    setFriends(getFriendsList(profile?.email));
+  }, [profile?.email]);
+
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Ngày hiện tại
   const [todayDateString] = useState<string>(() => new Date().toISOString().split('T')[0]);
+
+  // Chế độ hiển thị Giao diện Sáng / Tối hoàn toàn (Tailwind CSS Dark Mode)
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('app_theme_mode');
+      if (saved === 'dark' || saved === 'light') return saved;
+      if (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        return 'dark';
+      }
+    } catch (e) {}
+    return 'light';
+  });
+
+  // Đồng bộ themeMode vào class html, body và localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('app_theme_mode', themeMode);
+    } catch (e) {}
+    if (themeMode === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.body.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.body.classList.remove('dark');
+    }
+  }, [themeMode]);
+
+  const handleToggleTheme = (mode?: 'light' | 'dark') => {
+    setThemeMode((prev) => {
+      const next = mode !== undefined ? mode : prev === 'dark' ? 'light' : 'dark';
+      return next;
+    });
+  };
 
   // Cài đặt tên và biểu tượng ứng dụng (Ưu tiên đọc thêm app_contact_settings để không bao giờ bị mất link liên hệ)
   const [settings, setSettings] = useState<AppSettings>(() => {
@@ -88,45 +170,54 @@ export default function App() {
   });
 
 
-  // Danh sách học viên mẫu cho AdminView
-  const [allProfiles, setAllProfiles] = useState<Profile[]>([
-    {
-      id: 'admin-hung',
-      email: 'hungpv2172002@gmail.com',
-      full_name: 'Phùng Việt Hùng',
-      avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=HungPV',
-      role: 'admin',
-      is_vip: true,
-      created_at: '2026-03-01T08:00:00Z',
-    },
-    {
-      id: 'user-nam',
-      email: 'nam.nguyen@gmail.com',
-      full_name: 'Nguyễn Văn Nam',
-      avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=NamNguyen',
-      role: 'user',
-      is_vip: false,
-      created_at: '2026-03-10T10:30:00Z',
-    },
-    {
-      id: 'user-hoa',
-      email: 'hoa.tran@gmail.com',
-      full_name: 'Trần Thị Hoa',
-      avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=HoaTran',
-      role: 'user',
-      is_vip: true,
-      created_at: '2026-03-12T14:15:00Z',
-    },
-    {
-      id: 'user-linh',
-      email: 'linh.le@gmail.com',
-      full_name: 'Lê Thùy Linh',
-      avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=LinhLe',
-      role: 'user',
-      is_vip: false,
-      created_at: '2026-03-14T09:00:00Z',
-    },
-  ]);
+  // Danh sách tài khoản người dùng và quản trị viên cho AdminView
+  const [allProfiles, setAllProfiles] = useState<Profile[]>(() => {
+    try {
+      const saved = localStorage.getItem('app_managed_accounts');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return [
+      {
+        id: 'admin-hung',
+        email: 'hungpv2172002@gmail.com',
+        full_name: 'Phùng Việt Hùng',
+        avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=HungPV',
+        role: 'admin',
+        is_vip: true,
+        created_at: '2026-03-01T08:00:00Z',
+      },
+      {
+        id: 'user-nam',
+        email: 'nam.nguyen@gmail.com',
+        full_name: 'Nguyễn Văn Nam',
+        avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=NamNguyen',
+        role: 'user',
+        is_vip: false,
+        created_at: '2026-03-10T10:30:00Z',
+      },
+      {
+        id: 'user-hoa',
+        email: 'hoa.tran@gmail.com',
+        full_name: 'Trần Thị Hoa',
+        avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=HoaTran',
+        role: 'user',
+        is_vip: true,
+        created_at: '2026-03-12T14:15:00Z',
+      },
+      {
+        id: 'user-linh',
+        email: 'linh.le@gmail.com',
+        full_name: 'Lê Thùy Linh',
+        avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=LinhLe',
+        role: 'user',
+        is_vip: false,
+        created_at: '2026-03-14T09:00:00Z',
+      },
+    ];
+  });
 
   // 1. Tải tiến độ học hôm nay từ localStorage
   useEffect(() => {
@@ -313,6 +404,20 @@ export default function App() {
     const today = new Date().toISOString().split('T')[0];
     localStorage.setItem(`daily_study_count_${today}`, nextCount.toString());
 
+    // Cập nhật tiến độ huy hiệu học tập & chuỗi ngày học (streak)
+    const { newlyUnlocked } = recordQuestionCompleted(profile?.email);
+    if (newlyUnlocked && newlyUnlocked.length > 0) {
+      try {
+        confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      } catch (e) {}
+      playVictorySound();
+      setToastMessage({
+        type: 'success',
+        text: `🎉 MỞ KHÓA HUY HIỆU MỚI: "${newlyUnlocked[0].name}" (${newlyUnlocked[0].icon})!`,
+      });
+      setTimeout(() => setToastMessage(null), 5000);
+    }
+
     // Nếu đã đăng nhập và Supabase sẵn sàng, ghi vào bảng study_logs
     if (profile && isSupabaseConfigured) {
       try {
@@ -479,7 +584,51 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900 w-full max-w-full overflow-x-hidden">
+    <div
+      className={`min-h-screen flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900 w-full max-w-full overflow-x-hidden transition-colors ${
+        themeMode === 'dark'
+          ? 'bg-slate-950 text-slate-100 dark'
+          : settings.bgTheme === 'pure-white'
+          ? 'bg-white text-slate-800'
+          : settings.bgTheme === 'warm'
+          ? 'bg-amber-50/40 text-slate-800'
+          : settings.bgTheme === 'dark-slate'
+          ? 'bg-slate-900 text-slate-100 dark'
+          : 'bg-slate-50 text-slate-800'
+      }`}
+    >
+      {/* BANNER THÔNG BÁO ĐẦU TRANG NẾU ĐƯỢC BẬT TỪ TRANG QUẢN LÝ */}
+      {settings.showAnnouncement && settings.announcementText && (
+        <div
+          className={`w-full py-2 px-3 text-xs font-semibold text-center flex items-center justify-center gap-2 relative z-40 transition-colors ${
+            settings.announcementType === 'vip'
+              ? 'bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 text-white shadow-2xs'
+              : settings.announcementType === 'success'
+              ? 'bg-emerald-600 text-white'
+              : settings.announcementType === 'warning'
+              ? 'bg-amber-600 text-white'
+              : 'bg-indigo-600 text-white'
+          }`}
+        >
+          <span>{settings.announcementText}</span>
+          {settings.announcementLinkText && (
+            <button
+              onClick={() => {
+                if (!profile) {
+                  setAuthModalMode('register');
+                  setIsAuthOpen(true);
+                } else {
+                  setIsProfileOpen(true);
+                }
+              }}
+              className="px-2 py-0.5 rounded-full bg-white/20 hover:bg-white/30 text-white text-[11px] underline font-bold cursor-pointer transition-all"
+            >
+              {settings.announcementLinkText} →
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Toast */}
       {toastMessage && (
         <div className="fixed top-4 right-4 z-50 animate-in fade-in slide-in-from-top-4 max-w-[calc(100vw-2rem)]">
@@ -512,10 +661,14 @@ export default function App() {
         }}
         onOpenProfile={() => setIsProfileOpen(true)}
         onOpenGuide={() => setIsGuideOpen(true)}
+        onOpenFriends={() => setIsFriendsOpen(true)}
+        friendsCount={friends.length}
         onSignOut={handleSignOut}
         onQuickAiGenerate={handleQuickAiGenerate}
         isAiGenerating={isAiGenerating}
         settings={settings}
+        themeMode={themeMode}
+        onToggleTheme={handleToggleTheme}
       />
 
       {/* MAIN CONTAINER */}
@@ -533,6 +686,16 @@ export default function App() {
             onShuffle={handleShuffleQuestions}
             todayDateString={todayDateString}
             onOpenBattle={() => setCurrentView('battle')}
+            onOpenDuel={() => setCurrentView('duel')}
+          />
+        ) : currentView === 'duel' ? (
+          <DuelBattleView
+            profile={profile}
+            onBackToStudy={() => setCurrentView('study')}
+            initialRoomId={initialDuelRoomId}
+            allProfiles={allProfiles}
+            friends={friends}
+            onFriendsUpdated={(newFriends) => setFriends(newFriends)}
           />
         ) : currentView === 'battle' ? (
           <TowerBattleView
@@ -550,27 +713,37 @@ export default function App() {
             settings={settings}
             onSaveSettings={handleSaveSettings}
             onOpenGuide={() => setIsGuideOpen(true)}
+            onUpdateProfiles={(newProfiles) => {
+              setAllProfiles(newProfiles);
+              try {
+                localStorage.setItem('app_managed_accounts', JSON.stringify(newProfiles));
+              } catch (e) {}
+            }}
+            onOpenAuth={() => {
+              setAuthModalMode('login');
+              setIsAuthOpen(true);
+            }}
           />
         )}
       </main>
 
 
       {/* FOOTER */}
-      <footer className="border-t border-slate-200 bg-white py-6 text-xs text-slate-500 w-full max-w-full overflow-hidden">
+      <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 py-6 text-xs text-slate-500 dark:text-slate-400 w-full max-w-full overflow-hidden transition-colors">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 w-full min-w-0">
           {/* Bản quyền & Thông tin ứng dụng */}
           <div className="flex flex-col sm:flex-row items-center gap-2 text-center sm:text-left">
-            <p className="font-medium text-slate-600">
+            <p className="font-medium text-slate-600 dark:text-slate-300">
               © 2026 {settings.appName} • Luyện dịch Việt ➔ Anh mỗi ngày
             </p>
-            <span className="hidden sm:inline text-slate-300">•</span>
-            <span className="text-slate-400">Rèn luyện bền bỉ mỗi ngày</span>
+            <span className="hidden sm:inline text-slate-300 dark:text-slate-700">•</span>
+            <span className="text-slate-400 dark:text-slate-500">Rèn luyện bền bỉ mỗi ngày</span>
             {profile?.role === 'admin' && (
               <>
-                <span className="hidden sm:inline text-slate-300">•</span>
+                <span className="hidden sm:inline text-slate-300 dark:text-slate-700">•</span>
                 <button
                   onClick={() => setIsGuideOpen(true)}
-                  className="text-indigo-600 hover:text-indigo-800 font-semibold underline underline-offset-2 cursor-pointer"
+                  className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-semibold underline underline-offset-2 cursor-pointer"
                 >
                   Mã SQL Supabase
                 </button>
@@ -578,7 +751,7 @@ export default function App() {
             )}
           </div>
 
-          {/* CÁC ICON LIÊN HỆ DƯỚI CÙNG TRANG (EMAIL, FACEBOOK, TIKTOK) */}
+          {/* CÁC ICON LIÊN HỆ DƯỚI CÙNG TRANG (EMAIL, FACEBOOK, TIKTOK, PHONE, ZALO) */}
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-medium text-slate-400 hidden lg:inline mr-1">
               Liên hệ & hỗ trợ:
@@ -587,6 +760,8 @@ export default function App() {
               email={settings.contactEmail}
               facebookUrl={settings.contactFacebook}
               tiktokUrl={settings.contactTiktok}
+              phone={settings.contactPhone}
+              zaloUrl={settings.contactZalo}
             />
           </div>
         </div>
@@ -628,6 +803,24 @@ export default function App() {
           setAllProfiles((prev) =>
             prev.map((p) => (p.id === updated.id ? updated : p))
           );
+        }}
+        themeMode={themeMode}
+        onToggleTheme={handleToggleTheme}
+      />
+
+      <FriendsModal
+        isOpen={isFriendsOpen}
+        onClose={() => setIsFriendsOpen(false)}
+        currentUser={profile}
+        friends={friends}
+        onFriendsUpdated={(newFriends) => setFriends(newFriends)}
+        onChallengeFriend={(friend) => {
+          setCurrentView('duel');
+          setToastMessage({
+            type: 'success',
+            text: `Đang mở Đấu Trường 1v1 để thách đấu cùng ${friend.name} (${friend.email})!`,
+          });
+          setTimeout(() => setToastMessage(null), 3500);
         }}
       />
 

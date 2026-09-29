@@ -194,19 +194,19 @@ GEMINI_API_KEY=AIzaSy...
 CRON_SECRET=my_super_secret_cron_token_12345`;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-3xl shadow-2xl border border-slate-100 flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="relative w-full max-w-4xl max-h-[90vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-100 flex flex-col overflow-hidden transition-colors">
         {/* Header Modal */}
-        <div className="p-5 sm:p-6 border-b border-slate-200 flex items-center justify-between bg-slate-50/70">
+        <div className="p-5 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50/70 dark:bg-slate-850/70">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
               <Code2 className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
                 Hướng Dẫn Từng Bước & File SQL Hoàn Chỉnh
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 Dành cho người mới bắt đầu triển khai với Supabase và Next.js App Router
               </p>
             </div>
@@ -214,20 +214,20 @@ CRON_SECRET=my_super_secret_cron_token_12345`;
 
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200 transition-colors"
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 bg-slate-100/60 px-3 sm:px-6 gap-1.5 sm:gap-2 pt-2 text-xs font-bold overflow-x-auto no-scrollbar whitespace-nowrap">
+        <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-850/60 px-3 sm:px-6 gap-1.5 sm:gap-2 pt-2 text-xs font-bold overflow-x-auto no-scrollbar whitespace-nowrap">
           <button
             onClick={() => setActiveTab('sql')}
             className={`py-2.5 px-4 rounded-t-xl transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'sql'
-                ? 'bg-white text-indigo-700 shadow-xs border-t border-x border-slate-200 -mb-px'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border-t border-x border-slate-200 dark:border-slate-800 -mb-px'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Database className="w-3.5 h-3.5" />
@@ -238,8 +238,8 @@ CRON_SECRET=my_super_secret_cron_token_12345`;
             onClick={() => setActiveTab('install')}
             className={`py-2.5 px-4 rounded-t-xl transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'install'
-                ? 'bg-white text-indigo-700 shadow-xs border-t border-x border-slate-200 -mb-px'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border-t border-x border-slate-200 dark:border-slate-800 -mb-px'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Terminal className="w-3.5 h-3.5" />
@@ -250,8 +250,8 @@ CRON_SECRET=my_super_secret_cron_token_12345`;
             onClick={() => setActiveTab('env')}
             className={`py-2.5 px-4 rounded-t-xl transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'env'
-                ? 'bg-white text-indigo-700 shadow-xs border-t border-x border-slate-200 -mb-px'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-400 shadow-xs border-t border-x border-slate-200 dark:border-slate-800 -mb-px'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <FileText className="w-3.5 h-3.5" />

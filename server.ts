@@ -1,4 +1,6 @@
 import express from 'express';
+import http from 'http';
+import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -11,6 +13,7 @@ import { INITIAL_QUESTIONS } from './src/data/initialQuestions';
 dotenv.config();
 
 const app = express();
+const httpServer = http.createServer(app);
 const PORT = 3000;
 
 app.use(express.json());
@@ -59,19 +62,32 @@ let memoryQuestionsStore: any[] = INITIAL_QUESTIONS.map((q, i) => ({
   vi: q.vi,
   hints: q.hints,
   answers: q.answers,
+  category: q.category || 'general',
+  level: q.level || 'B1',
   created_date: new Date().toISOString().split('T')[0],
 }));
 
 // Cài đặt tên, biểu tượng và kênh liên lạc ứng dụng (có thể chỉnh sửa từ trang Admin)
 const SETTINGS_FILE = path.join(process.cwd(), 'app-settings.json');
-let appSettings = {
+let appSettings: Record<string, any> = {
   appName: 'Dịch Mỗi Ngày',
   appSubtitle: 'Dịch câu mỗi ngày kèm từ vựng gợi ý',
   appIcon: '🎯',
   appIconType: 'emoji',
+  themeColor: 'indigo',
+  bgTheme: 'default',
+  showAnnouncement: true,
+  announcementText: '🔥 Khuyến mãi VIP Trọn Đời: Mở khóa toàn bộ chuyên ngành IT, Kinh Doanh & Du Lịch!',
+  announcementType: 'vip',
+  announcementLinkText: 'Nâng cấp VIP',
+  heroGreeting: 'Luyện dịch mỗi ngày để phản xạ tiếng Anh tự nhiên',
+  heroSubtext: 'Học dịch từng câu, tra từ vựng thông minh và thi đấu Boss tiếng Anh',
+  contactPhone: '0987.654.321',
+  contactZalo: 'https://zalo.me/0987654321',
   contactEmail: 'hungpv2172002@gmail.com',
   contactFacebook: 'https://facebook.com',
   contactTiktok: 'https://tiktok.com',
+  contactTelegram: '',
 };
 
 // Đọc cài đặt đã lưu nếu có (thử cả app-settings.json và /tmp/app-settings.json)
@@ -478,36 +494,12 @@ app.get(['/api/settings', '/settings'], async (req, res) => {
 // Endpoint cập nhật cài đặt ứng dụng từ trang Admin
 app.post(['/api/settings', '/settings'], async (req, res) => {
   try {
-    const {
-      appName,
-      appSubtitle,
-      appIcon,
-      appIconType,
-      contactEmail,
-      contactFacebook,
-      contactTiktok,
-    } = req.body || {};
-
-    if (appName && typeof appName === 'string') {
-      appSettings.appName = appName.trim();
-    }
-    if (typeof appSubtitle === 'string') {
-      appSettings.appSubtitle = appSubtitle.trim();
-    }
-    if (appIcon && typeof appIcon === 'string') {
-      appSettings.appIcon = appIcon.trim();
-    }
-    if (appIconType === 'lucide' || appIconType === 'emoji') {
-      appSettings.appIconType = appIconType;
-    }
-    if (typeof contactEmail === 'string') {
-      appSettings.contactEmail = contactEmail.trim();
-    }
-    if (typeof contactFacebook === 'string') {
-      appSettings.contactFacebook = contactFacebook.trim();
-    }
-    if (typeof contactTiktok === 'string') {
-      appSettings.contactTiktok = contactTiktok.trim();
+    const payload = req.body || {};
+    // Gộp tất cả các trường cấu hình hợp lệ
+    for (const key of Object.keys(payload)) {
+      if (payload[key] !== undefined) {
+        appSettings[key] = payload[key];
+      }
     }
 
     // 1. Ghi vào file disk
@@ -989,6 +981,736 @@ app.post(['/api/auth/reset-password', '/auth/reset-password'], async (req, res) 
   }
 });
 
+// ==============================================================================
+// HỆ THỐNG ĐẤU TRƯỜNG DỊCH 1V1 THỜI GIAN THỰC (REAL-TIME WEBSOCKET DUEL)
+// ==============================================================================
+
+interface ServerDuelPlayer {
+  ws: WebSocket;
+  id: string;
+  name: string;
+  avatar_url?: string;
+  isHost: boolean;
+  score: number;
+  currentQuestionIndex: number;
+  answeredCount: number;
+  isReady: boolean;
+  isFinished: boolean;
+  lastAnswerCorrect?: boolean;
+  lastAnswerText?: string;
+  typingLength?: number;
+}
+
+interface ServerDuelRoom {
+  roomId: string;
+  status: 'waiting' | 'countdown' | 'in_progress' | 'finished';
+  category: string;
+  questionCount: number;
+  players: Map<string, ServerDuelPlayer>;
+  questions: any[];
+  currentRound: number;
+  roundTimerSeconds: number;
+  roundStartedAt?: number;
+  winnerId?: string | null;
+  firstCorrectAnswers: Map<number, string>;
+  rematchVotes: Map<string, boolean>;
+  countdownInterval?: NodeJS.Timeout;
+}
+
+const duelRooms = new Map<string, ServerDuelRoom>();
+let quickMatchWaitingQueue: {
+  ws: WebSocket;
+  player: { id: string; name: string; avatar_url?: string };
+  category: string;
+  questionCount: number;
+} | null = null;
+
+function normalizeSentenceServer(text: string): string {
+  return (text || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[.,!?;:()]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function generateDuelRoomId(): string {
+  let id = '';
+  do {
+    const num = Math.floor(1000 + Math.random() * 9000);
+    id = `DUEL-${num}`;
+  } while (duelRooms.has(id));
+  return id;
+}
+
+function pickDuelQuestions(count: number, category: string = 'all'): any[] {
+  let pool = [...memoryQuestionsStore];
+  if (category && category !== 'all' && category !== 'general') {
+    const filtered = pool.filter((q) => q.category === category);
+    if (filtered.length >= count) {
+      pool = filtered;
+    }
+  }
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, Math.min(count, pool.length));
+}
+
+function serializeRoomState(room: ServerDuelRoom): any {
+  const playersObj: Record<string, any> = {};
+  for (const [pId, p] of room.players.entries()) {
+    playersObj[pId] = {
+      id: p.id,
+      name: p.name,
+      avatar_url: p.avatar_url,
+      isHost: p.isHost,
+      score: p.score,
+      currentQuestionIndex: p.currentQuestionIndex,
+      answeredCount: p.answeredCount,
+      isReady: p.isReady,
+      isFinished: p.isFinished,
+      lastAnswerCorrect: p.lastAnswerCorrect,
+      lastAnswerText: p.lastAnswerText,
+      typingLength: p.typingLength || 0,
+    };
+  }
+
+  const rematchObj: Record<string, boolean> = {};
+  for (const [pId, v] of room.rematchVotes.entries()) {
+    rematchObj[pId] = v;
+  }
+
+  return {
+    roomId: room.roomId,
+    status: room.status,
+    category: room.category,
+    questionCount: room.questionCount,
+    players: playersObj,
+    questions: room.questions.map((q) => ({
+      id: q.id,
+      vi: q.vi,
+      hints: q.hints,
+      level: q.level || 'B1',
+      category: q.category || 'general',
+      answers: q.answers,
+    })),
+    currentRound: room.currentRound,
+    roundTimerSeconds: room.roundTimerSeconds,
+    roundStartedAt: room.roundStartedAt,
+    winnerId: room.winnerId,
+    rematchVotes: rematchObj,
+  };
+}
+
+function broadcastToRoom(room: ServerDuelRoom, payload: any, excludeWs?: WebSocket) {
+  const data = JSON.stringify(payload);
+  for (const player of room.players.values()) {
+    if (player.ws !== excludeWs && player.ws.readyState === WebSocket.OPEN) {
+      player.ws.send(data);
+    }
+  }
+}
+
+function broadcastRoomState(room: ServerDuelRoom) {
+  broadcastToRoom(room, {
+    type: 'room_state',
+    state: serializeRoomState(room),
+  });
+}
+
+// REST API hỗ trợ lấy thông tin phòng hoặc kiểm tra mã phòng
+app.get(['/api/duel/room/:id', '/duel/room/:id'], (req, res) => {
+  const roomId = req.params.id.toUpperCase().trim();
+  const room = duelRooms.get(roomId);
+  if (!room) {
+    return res.status(404).json({ exists: false, message: 'Phòng thi đấu không tồn tại hoặc đã kết thúc' });
+  }
+  return res.json({
+    exists: true,
+    roomId: room.roomId,
+    playerCount: room.players.size,
+    status: room.status,
+    category: room.category,
+    questionCount: room.questionCount,
+  });
+});
+
+app.get(['/api/duel/stats', '/duel/stats'], (req, res) => {
+  let totalActivePlayers = 0;
+  for (const room of duelRooms.values()) {
+    totalActivePlayers += room.players.size;
+  }
+  return res.json({
+    activeRooms: duelRooms.size,
+    totalPlayers: totalActivePlayers,
+    waitingInQueue: quickMatchWaitingQueue ? 1 : 0,
+  });
+});
+
+// Khởi tạo WebSocketServer gắn vào httpServer
+const wss = new WebSocketServer({ server: httpServer, path: '/ws/duel' });
+
+wss.on('connection', (ws: WebSocket) => {
+  let currentRoomId: string | null = null;
+  let currentPlayerId: string | null = null;
+
+  ws.on('message', (messageRaw: any) => {
+    try {
+      const data = JSON.parse(messageRaw.toString());
+      const { type } = data;
+
+      // 1. Tham gia phòng hoặc Tạo phòng mới
+      if (type === 'join_room') {
+        const { roomId: rawRoomId, player, questionCount = 5, category = 'all' } = data;
+        const pId = player?.id || `player-${Date.now()}`;
+        const pName = player?.name || 'Chiến binh';
+        const pAvatar = player?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${pId}`;
+
+        let targetRoomId = (rawRoomId || '').toUpperCase().trim();
+        let room: ServerDuelRoom | undefined;
+
+        if (targetRoomId) {
+          room = duelRooms.get(targetRoomId);
+          if (!room) {
+            room = {
+              roomId: targetRoomId,
+              status: 'waiting',
+              category: category || 'all',
+              questionCount: questionCount || 5,
+              players: new Map(),
+              questions: [],
+              currentRound: 0,
+              roundTimerSeconds: 60,
+              firstCorrectAnswers: new Map(),
+              rematchVotes: new Map(),
+            };
+            duelRooms.set(targetRoomId, room);
+          }
+        } else {
+          targetRoomId = generateDuelRoomId();
+          room = {
+            roomId: targetRoomId,
+            status: 'waiting',
+            category: category || 'all',
+            questionCount: questionCount || 5,
+            players: new Map(),
+            questions: [],
+            currentRound: 0,
+            roundTimerSeconds: 60,
+            firstCorrectAnswers: new Map(),
+            rematchVotes: new Map(),
+          };
+          duelRooms.set(targetRoomId, room);
+        }
+
+        if (room.players.size >= 2 && !room.players.has(pId)) {
+          ws.send(
+            JSON.stringify({
+              type: 'error',
+              message: 'Phòng này đã đủ 2 người thi đấu! Vui lòng nhập mã phòng khác hoặc tạo phòng mới.',
+            })
+          );
+          return;
+        }
+
+        currentRoomId = targetRoomId;
+        currentPlayerId = pId;
+
+        const isHost = room.players.size === 0 || (room.players.has(pId) && room.players.get(pId)!.isHost);
+
+        room.players.set(pId, {
+          ws,
+          id: pId,
+          name: pName,
+          avatar_url: pAvatar,
+          isHost,
+          score: 0,
+          currentQuestionIndex: 0,
+          answeredCount: 0,
+          isReady: isHost,
+          isFinished: false,
+          typingLength: 0,
+        });
+
+        ws.send(
+          JSON.stringify({
+            type: 'joined_success',
+            roomId: room.roomId,
+            playerId: pId,
+            isHost,
+          })
+        );
+
+        broadcastRoomState(room);
+        broadcastToRoom(
+          room,
+          {
+            type: 'player_joined_event',
+            player: { id: pId, name: pName, isHost },
+          },
+          ws
+        );
+      }
+
+      // 2. Tìm trận ghép đôi tức thì (Quick Matchmaking)
+      else if (type === 'find_match') {
+        const { player, category = 'all', questionCount = 5 } = data;
+        const pId = player?.id || `player-${Date.now()}`;
+        const pName = player?.name || 'Chiến binh';
+        const pAvatar = player?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${pId}`;
+
+        if (
+          quickMatchWaitingQueue &&
+          quickMatchWaitingQueue.ws.readyState === WebSocket.OPEN &&
+          quickMatchWaitingQueue.player.id !== pId
+        ) {
+          const waitingItem = quickMatchWaitingQueue;
+          quickMatchWaitingQueue = null;
+
+          const newRoomId = generateDuelRoomId();
+          const matchQuestions = pickDuelQuestions(questionCount, category);
+
+          const room: ServerDuelRoom = {
+            roomId: newRoomId,
+            status: 'in_progress',
+            category,
+            questionCount,
+            players: new Map(),
+            questions: matchQuestions,
+            currentRound: 0,
+            roundTimerSeconds: 60,
+            roundStartedAt: Date.now(),
+            firstCorrectAnswers: new Map(),
+            rematchVotes: new Map(),
+          };
+
+          room.players.set(waitingItem.player.id, {
+            ws: waitingItem.ws,
+            id: waitingItem.player.id,
+            name: waitingItem.player.name,
+            avatar_url: waitingItem.player.avatar_url,
+            isHost: true,
+            score: 0,
+            currentQuestionIndex: 0,
+            answeredCount: 0,
+            isReady: true,
+            isFinished: false,
+            typingLength: 0,
+          });
+
+          currentRoomId = newRoomId;
+          currentPlayerId = pId;
+
+          room.players.set(pId, {
+            ws,
+            id: pId,
+            name: pName,
+            avatar_url: pAvatar,
+            isHost: false,
+            score: 0,
+            currentQuestionIndex: 0,
+            answeredCount: 0,
+            isReady: true,
+            isFinished: false,
+            typingLength: 0,
+          });
+
+          duelRooms.set(newRoomId, room);
+
+          waitingItem.ws.send(JSON.stringify({ type: 'joined_success', roomId: newRoomId, playerId: waitingItem.player.id, isHost: true }));
+          ws.send(JSON.stringify({ type: 'joined_success', roomId: newRoomId, playerId: pId, isHost: false }));
+
+          broadcastRoomState(room);
+          broadcastToRoom(room, {
+            type: 'match_found',
+            roomId: newRoomId,
+          });
+        } else {
+          quickMatchWaitingQueue = {
+            ws,
+            player: { id: pId, name: pName, avatar_url: pAvatar },
+            category,
+            questionCount,
+          };
+          currentPlayerId = pId;
+          ws.send(JSON.stringify({ type: 'waiting_in_queue', message: 'Đang tìm kiếm đối thủ trực tuyến...' }));
+        }
+      }
+
+      // 3. Hủy tìm trận
+      else if (type === 'cancel_find_match') {
+        if (quickMatchWaitingQueue && quickMatchWaitingQueue.player.id === currentPlayerId) {
+          quickMatchWaitingQueue = null;
+        }
+        ws.send(JSON.stringify({ type: 'search_cancelled' }));
+      }
+
+      // 4. Bật / Tắt sẵn sàng
+      else if (type === 'toggle_ready') {
+        if (!currentRoomId || !currentPlayerId) return;
+        const room = duelRooms.get(currentRoomId);
+        if (!room) return;
+        const player = room.players.get(currentPlayerId);
+        if (player) {
+          player.isReady = !player.isReady;
+          broadcastRoomState(room);
+        }
+      }
+
+      // 4.1 Cập nhật cài đặt phòng (Số câu & Chủ đề)
+      else if (type === 'update_room_settings') {
+        if (!currentRoomId || !currentPlayerId) return;
+        const room = duelRooms.get(currentRoomId);
+        if (!room || room.status !== 'waiting') return;
+        const host = room.players.get(currentPlayerId);
+        if (!host || !host.isHost) return;
+        if (data.questionCount) room.questionCount = data.questionCount;
+        if (data.category) room.category = data.category;
+        broadcastRoomState(room);
+      }
+
+      // 5. Bắt đầu trận đấu
+      else if (type === 'start_game') {
+        if (!currentRoomId || !currentPlayerId) return;
+        const room = duelRooms.get(currentRoomId);
+        if (!room) return;
+        const host = room.players.get(currentPlayerId);
+        if (!host || !host.isHost) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Chỉ chủ phòng mới có thể bắt đầu trận đấu!' }));
+          return;
+        }
+
+        room.questions = pickDuelQuestions(room.questionCount, room.category);
+        room.status = 'countdown';
+        room.currentRound = 0;
+        room.firstCorrectAnswers.clear();
+        room.winnerId = null;
+
+        for (const p of room.players.values()) {
+          p.score = 0;
+          p.currentQuestionIndex = 0;
+          p.answeredCount = 0;
+          p.isFinished = false;
+          p.lastAnswerCorrect = undefined;
+          p.lastAnswerText = undefined;
+          p.typingLength = 0;
+        }
+
+        broadcastRoomState(room);
+
+        let count = 3;
+        const countdownTimer = setInterval(() => {
+          count--;
+          if (count > 0) {
+            broadcastToRoom(room, { type: 'countdown_tick', count });
+          } else {
+            clearInterval(countdownTimer);
+            room.status = 'in_progress';
+            room.roundStartedAt = Date.now();
+            broadcastRoomState(room);
+            broadcastToRoom(room, { type: 'game_started' });
+          }
+        }, 1000);
+      }
+
+      // 6. Nộp câu trả lời
+      else if (type === 'submit_answer') {
+        if (!currentRoomId || !currentPlayerId) return;
+        const room = duelRooms.get(currentRoomId);
+        if (!room || room.status !== 'in_progress') return;
+
+        const player = room.players.get(currentPlayerId);
+        if (!player || player.isFinished) return;
+
+        const { questionIndex, answer } = data;
+        const currentQ = room.questions[questionIndex];
+        if (!currentQ) return;
+
+        const normUser = normalizeSentenceServer(answer);
+        const normAnswers = (currentQ.answers || []).map(normalizeSentenceServer);
+
+        const isCorrect = normAnswers.some((ans: string) => ans === normUser);
+
+        if (isCorrect) {
+          const isFirst = !room.firstCorrectAnswers.has(questionIndex);
+          if (isFirst) {
+            room.firstCorrectAnswers.set(questionIndex, player.id);
+          }
+
+          const basePoints = 100;
+          const speedBonus = isFirst ? 50 : 0;
+          const pointsEarned = basePoints + speedBonus;
+
+          player.score += pointsEarned;
+          player.currentQuestionIndex++;
+          player.answeredCount++;
+          player.lastAnswerCorrect = true;
+          player.lastAnswerText = answer;
+
+          ws.send(
+            JSON.stringify({
+              type: 'answer_result',
+              correct: true,
+              pointsEarned,
+              isFirst,
+              questionIndex,
+              playerScore: player.score,
+              currentQuestionIndex: player.currentQuestionIndex,
+            })
+          );
+
+          broadcastToRoom(
+            room,
+            {
+              type: 'opponent_scored',
+              playerId: player.id,
+              playerName: player.name,
+              questionIndex,
+              isFirst,
+              score: player.score,
+            },
+            ws
+          );
+
+          if (player.answeredCount >= room.questions.length) {
+            player.isFinished = true;
+
+            let allFinished = true;
+            for (const p of room.players.values()) {
+              if (!p.isFinished) {
+                allFinished = false;
+                break;
+              }
+            }
+
+            if (allFinished) {
+              room.status = 'finished';
+              let maxScore = -1;
+              let winnerId: string | null = null;
+              for (const p of room.players.values()) {
+                if (p.score > maxScore) {
+                  maxScore = p.score;
+                  winnerId = p.id;
+                } else if (p.score === maxScore) {
+                  winnerId = null;
+                }
+              }
+              room.winnerId = winnerId;
+            }
+          }
+
+          broadcastRoomState(room);
+        } else {
+          player.lastAnswerCorrect = false;
+          player.lastAnswerText = answer;
+
+          ws.send(
+            JSON.stringify({
+              type: 'answer_result',
+              correct: false,
+              questionIndex,
+              message: 'Bản dịch chưa chính xác, hãy thử lại!',
+            })
+          );
+        }
+      }
+
+      // 7. Đồng bộ thanh gõ phím theo thời gian thực (Live Typing)
+      else if (type === 'typing') {
+        if (!currentRoomId || !currentPlayerId) return;
+        const room = duelRooms.get(currentRoomId);
+        if (!room || room.status !== 'in_progress') return;
+
+        const player = room.players.get(currentPlayerId);
+        if (player) {
+          player.typingLength = data.textLength || 0;
+          broadcastToRoom(
+            room,
+            {
+              type: 'opponent_typing',
+              playerId: player.id,
+              typingLength: player.typingLength,
+            },
+            ws
+          );
+        }
+      }
+
+      // 8. Thả biểu cảm cảm xúc (Emotes)
+      else if (type === 'send_emote') {
+        if (!currentRoomId || !currentPlayerId) return;
+        const room = duelRooms.get(currentRoomId);
+        if (!room) return;
+
+        const player = room.players.get(currentPlayerId);
+        if (player) {
+          broadcastToRoom(room, {
+            type: 'emote_received',
+            senderId: player.id,
+            senderName: player.name,
+            emote: data.emote || '🔥',
+          });
+        }
+      }
+
+      // 9. Bỏ qua câu hỏi (Skip)
+      else if (type === 'skip_question') {
+        if (!currentRoomId || !currentPlayerId) return;
+        const room = duelRooms.get(currentRoomId);
+        if (!room || room.status !== 'in_progress') return;
+
+        const player = room.players.get(currentPlayerId);
+        if (!player || player.isFinished) return;
+
+        player.currentQuestionIndex++;
+        player.answeredCount++;
+        player.lastAnswerCorrect = false;
+
+        if (player.answeredCount >= room.questions.length) {
+          player.isFinished = true;
+          let allFinished = true;
+          for (const p of room.players.values()) {
+            if (!p.isFinished) {
+              allFinished = false;
+              break;
+            }
+          }
+          if (allFinished) {
+            room.status = 'finished';
+            let maxScore = -1;
+            let winnerId: string | null = null;
+            for (const p of room.players.values()) {
+              if (p.score > maxScore) {
+                maxScore = p.score;
+                winnerId = p.id;
+              } else if (p.score === maxScore) {
+                winnerId = null;
+              }
+            }
+            room.winnerId = winnerId;
+          }
+        }
+
+        ws.send(JSON.stringify({ type: 'question_skipped', currentQuestionIndex: player.currentQuestionIndex }));
+        broadcastRoomState(room);
+      }
+
+      // 10. Tái đấu (Rematch)
+      else if (type === 'request_rematch') {
+        if (!currentRoomId || !currentPlayerId) return;
+        const room = duelRooms.get(currentRoomId);
+        if (!room) return;
+
+        room.rematchVotes.set(currentPlayerId, true);
+
+        let allAgreed = room.players.size > 0;
+        for (const p of room.players.values()) {
+          if (!room.rematchVotes.get(p.id)) {
+            allAgreed = false;
+            break;
+          }
+        }
+
+        if (allAgreed) {
+          room.questions = pickDuelQuestions(room.questionCount, room.category);
+          room.status = 'countdown';
+          room.firstCorrectAnswers.clear();
+          room.rematchVotes.clear();
+          room.winnerId = null;
+
+          for (const p of room.players.values()) {
+            p.score = 0;
+            p.currentQuestionIndex = 0;
+            p.answeredCount = 0;
+            p.isFinished = false;
+            p.lastAnswerCorrect = undefined;
+            p.lastAnswerText = undefined;
+            p.typingLength = 0;
+          }
+
+          broadcastRoomState(room);
+
+          let count = 3;
+          const cd = setInterval(() => {
+            count--;
+            if (count > 0) {
+              broadcastToRoom(room, { type: 'countdown_tick', count });
+            } else {
+              clearInterval(cd);
+              room.status = 'in_progress';
+              room.roundStartedAt = Date.now();
+              broadcastRoomState(room);
+              broadcastToRoom(room, { type: 'game_started' });
+            }
+          }, 1000);
+        } else {
+          broadcastRoomState(room);
+          broadcastToRoom(room, {
+            type: 'rematch_requested_by_player',
+            playerId: currentPlayerId,
+          });
+        }
+      }
+
+      // 11. Rời phòng
+      else if (type === 'leave_room') {
+        if (currentRoomId && currentPlayerId) {
+          const room = duelRooms.get(currentRoomId);
+          if (room) {
+            room.players.delete(currentPlayerId);
+            if (room.players.size === 0) {
+              duelRooms.delete(currentRoomId);
+            } else {
+              const remainingPlayer = Array.from(room.players.values())[0];
+              if (remainingPlayer) {
+                remainingPlayer.isHost = true;
+              }
+              broadcastRoomState(room);
+              broadcastToRoom(room, {
+                type: 'player_left_event',
+                playerId: currentPlayerId,
+              });
+            }
+          }
+          currentRoomId = null;
+          currentPlayerId = null;
+        }
+      }
+    } catch (err: any) {
+      console.error('[WebSocket Duel Error]', err);
+    }
+  });
+
+  ws.on('close', () => {
+    if (quickMatchWaitingQueue && quickMatchWaitingQueue.ws === ws) {
+      quickMatchWaitingQueue = null;
+    }
+
+    if (currentRoomId && currentPlayerId) {
+      const room = duelRooms.get(currentRoomId);
+      if (room) {
+        room.players.delete(currentPlayerId);
+        if (room.players.size === 0) {
+          duelRooms.delete(currentRoomId);
+        } else {
+          const remainingPlayer = Array.from(room.players.values())[0];
+          if (remainingPlayer) {
+            remainingPlayer.isHost = true;
+          }
+          broadcastRoomState(room);
+          broadcastToRoom(room, {
+            type: 'player_disconnected_event',
+            playerId: currentPlayerId,
+          });
+        }
+      }
+    }
+  });
+});
+
 // Vite middleware cho development & Static file serving cho production
 async function start() {
   if (process.env.NODE_ENV !== 'production') {
@@ -1006,8 +1728,8 @@ async function start() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server đang chạy trên http://localhost:${PORT}`);
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server & WebSocket đang chạy trên http://localhost:${PORT}`);
   });
 }
 

@@ -33,6 +33,7 @@ import {
   playDefeatSound,
 } from '../lib/soundFx';
 import { Profile } from '../types';
+import { recordTowerFloorCleared } from '../lib/badgeSystem';
 
 interface TowerBattleViewProps {
   profile: Profile | null;
@@ -265,6 +266,9 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
       localStorage.setItem('tower_battle_coins', newCoins.toString());
     } catch (e) {}
 
+    // Ghi nhận tiến độ tháp cho Huy hiệu Dũng Sĩ Diệt Quái
+    recordTowerFloorCleared(currentFloor.floor, profile?.email);
+
     if (currentFloorIndex + 1 < TOWER_FLOORS.length) {
       setGameState('floor_cleared');
     } else {
@@ -386,11 +390,11 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
   return (
     <div className="w-full max-w-4xl mx-auto space-y-3 sm:space-y-4 animate-in fade-in duration-200 pb-16 px-1 sm:px-0 overflow-x-hidden">
       {/* 1. TOP NAV BAR CHO MINI GAME (Gọn gàng trên Mobile) */}
-      <div className="bg-white/95 backdrop-blur-md rounded-2xl p-2.5 sm:p-4 border border-slate-200/90 shadow-2xs flex items-center justify-between gap-1.5 sm:gap-2 w-full min-w-0">
+      <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl p-2.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-2xs flex items-center justify-between gap-1.5 sm:gap-2 w-full min-w-0 transition-colors">
         {/* Nút Về phòng học */}
         <button
           onClick={onBackToStudy}
-          className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer touch-press shrink-0"
+          className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 sm:px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer touch-press shrink-0"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           <span className="hidden xs:inline">Về học</span>
@@ -403,7 +407,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
             🏰
           </span>
           <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
-            <span className="text-xs sm:text-sm font-extrabold text-slate-900 truncate">
+            <span className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white truncate">
               Tháp Ma Vương
             </span>
             <span className="px-1.5 py-0.5 rounded-full bg-indigo-600 text-white text-[10px] font-black uppercase tracking-wider shrink-0">
@@ -414,19 +418,19 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
 
         {/* Chỉ số nhanh: Tim & Vàng */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          <div className="flex items-center gap-1 px-2 py-0.5 sm:py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
+          <div className="flex items-center gap-1 px-2 py-0.5 sm:py-1 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-300 text-xs font-bold">
             <Coins className="w-3 h-3 text-amber-500" />
             <span>{goldCoins}</span>
           </div>
 
-          <div className="flex items-center gap-0.5 bg-slate-50 px-1.5 py-0.5 sm:py-1 rounded-full border border-slate-200">
+          <div className="flex items-center gap-0.5 bg-slate-50 dark:bg-slate-800 px-1.5 py-0.5 sm:py-1 rounded-full border border-slate-200 dark:border-slate-700">
             {[1, 2, 3].map((heartIdx) => (
               <Heart
                 key={heartIdx}
                 className={`w-3.5 h-3.5 transition-all ${
                   heartIdx <= playerHp
                     ? 'text-rose-500 fill-rose-500 scale-100'
-                    : 'text-slate-300 scale-90'
+                    : 'text-slate-300 dark:text-slate-600 scale-90'
                 }`}
               />
             ))}
@@ -581,44 +585,44 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
       </div>
 
       {/* 3. BÀN DỊCH THUẬT & RA CHIÊU (ACTION ARENA - TỐI ƯU CỰC MẠNH CHO ĐIỆN THOẠI) */}
-      <div className="bg-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-slate-200/90 shadow-xs space-y-3 w-full max-w-full overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-3 w-full max-w-full overflow-hidden transition-colors">
         {/* Câu Tiếng Việt Cần Dịch */}
         <div className="space-y-1 w-full min-w-0">
           <div className="flex items-center justify-between gap-1.5">
-            <span className="text-[11px] font-black uppercase tracking-wider text-indigo-700 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-indigo-500" />
+            <span className="text-[11px] font-black uppercase tracking-wider text-indigo-700 dark:text-indigo-400 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-indigo-500 dark:text-indigo-400" />
               Dịch sang Tiếng Anh:
             </span>
-            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 shrink-0">
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 shrink-0">
               {currentFloor.category}
             </span>
           </div>
 
-          <div className="p-3 sm:p-3.5 bg-gradient-to-r from-indigo-50/90 via-sky-50/40 to-indigo-50/90 border border-indigo-200/90 rounded-xl sm:rounded-2xl text-slate-900 font-extrabold text-sm sm:text-base leading-snug break-words">
+          <div className="p-3 sm:p-3.5 bg-gradient-to-r from-indigo-50/90 via-sky-50/40 to-indigo-50/90 dark:from-slate-850 dark:via-indigo-950/40 dark:to-slate-850 border border-indigo-200/90 dark:border-slate-700 rounded-xl sm:rounded-2xl text-slate-900 dark:text-white font-extrabold text-sm sm:text-base leading-snug break-words">
             "{currentFloor.questionVi}"
           </div>
 
           {currentFloor.hints && (
-            <p className="text-[11px] text-slate-500 italic px-1 flex items-center gap-1 break-words">
-              <HelpCircle className="w-3 h-3 text-indigo-500 shrink-0" />
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 italic px-1 flex items-center gap-1 break-words">
+              <HelpCircle className="w-3 h-3 text-indigo-500 dark:text-indigo-400 shrink-0" />
               <span>Gợi ý: {currentFloor.hints}</span>
             </p>
           )}
         </div>
 
         {/* THANH CHUYỂN ĐỔI CHẾ ĐỘ NHẬP LIỆU: CHẠM TỪ (MOBILE) VS GÕ BÀN PHÍM */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 text-xs w-full min-w-0">
-          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 dark:border-slate-800 text-xs w-full min-w-0">
+          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200 dark:border-slate-700 shrink-0">
             <button
               type="button"
               onClick={() => setInputMode('tokens')}
               className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 ${
                 inputMode === 'tokens'
-                  ? 'bg-white text-indigo-700 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <MousePointerClick className="w-3 h-3 text-indigo-600" />
+              <MousePointerClick className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
               <span>Chạm từ ghép câu</span>
             </button>
             <button
@@ -629,11 +633,11 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
               }}
               className={`px-2.5 py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1 ${
                 inputMode === 'keyboard'
-                  ? 'bg-white text-indigo-700 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Keyboard className="w-3 h-3 text-indigo-600" />
+              <Keyboard className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
               <span>Gõ phím</span>
             </button>
           </div>
@@ -644,7 +648,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
               <button
                 type="button"
                 onClick={handleRemoveLastWord}
-                className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors cursor-pointer touch-press"
+                className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-semibold transition-colors cursor-pointer touch-press"
                 title="Xóa từ cuối cùng"
               >
                 <Delete className="w-3 h-3" />
@@ -653,7 +657,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
               <button
                 type="button"
                 onClick={handleClearAll}
-                className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-semibold transition-colors cursor-pointer touch-press"
+                className="inline-flex items-center gap-0.5 px-2 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-[11px] font-semibold transition-colors cursor-pointer touch-press"
                 title="Xóa toàn bộ"
               >
                 <X className="w-3 h-3" />
@@ -665,9 +669,9 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
 
         {/* KHAY HIỂN THỊ CÂU ĐÃ GHÉP (WORD BANK TRAY - CHẠM TỪNG TỪ ĐỂ GỠ RA) */}
         {inputMode === 'tokens' ? (
-          <div className="min-h-[72px] p-3 rounded-2xl bg-slate-50 border-2 border-indigo-200/80 flex flex-wrap items-center gap-1.5 transition-all w-full max-w-full overflow-hidden">
+          <div className="min-h-[72px] p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border-2 border-indigo-200/80 dark:border-indigo-900/80 flex flex-wrap items-center gap-1.5 transition-all w-full max-w-full overflow-hidden">
             {assembledTokens.length === 0 ? (
-              <p className="text-xs sm:text-sm text-slate-400 font-medium select-none italic">
+              <p className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 font-medium select-none italic">
                 👉 Chạm các từ vựng bên dưới để ghép câu dịch...
               </p>
             ) : (
@@ -687,7 +691,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
           </div>
         ) : (
           /* CHẾ ĐỘ GÕ PHÍM TRỰC TIẾP */
-          <div className="rounded-2xl bg-slate-50 border-2 border-slate-200 focus-within:border-indigo-600 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100 transition-all w-full max-w-full overflow-hidden">
+          <div className="rounded-2xl bg-slate-50 dark:bg-slate-950 border-2 border-slate-200 dark:border-slate-700 focus-within:border-indigo-600 dark:focus-within:border-indigo-500 focus-within:bg-white dark:focus-within:bg-slate-950 focus-within:ring-2 focus-within:ring-indigo-100 dark:focus-within:ring-indigo-950 transition-all w-full max-w-full overflow-hidden">
             <textarea
               ref={textareaRef}
               rows={2}
@@ -701,16 +705,16 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
               }}
               disabled={gameState !== 'fighting'}
               placeholder="Gõ bản dịch tiếng Anh của bạn tại đây..."
-              className="w-full p-3 bg-transparent outline-hidden text-base font-semibold text-slate-900 placeholder:text-slate-400 resize-none leading-relaxed"
+              className="w-full p-3 bg-transparent outline-hidden text-base font-semibold text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 resize-none leading-relaxed"
             />
           </div>
         )}
 
         {/* KHO TỪ VỰNG GỢI Ý (WORD BANK - TOUCH TARGETS TO RÕ, KHÔNG BỊ TRỄ) */}
         <div className="space-y-1.5 pt-1 w-full min-w-0">
-          <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+          <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
             <span>Kho từ vựng chọn nhanh:</span>
-            <span className="text-[10px] text-slate-400 font-normal">
+            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">
               {wordCount > 0 ? `${wordCount} từ đã chọn` : 'Chạm từ để thêm'}
             </span>
           </div>
@@ -726,8 +730,8 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
                   disabled={isUsed || gameState !== 'fighting'}
                   className={`min-h-[40px] px-3 py-2 rounded-xl text-xs sm:text-sm font-bold border transition-all cursor-pointer select-none touch-press ${
                     isUsed
-                      ? 'bg-slate-100 text-slate-300 border-slate-200 pointer-events-none'
-                      : 'bg-white hover:bg-indigo-50 text-slate-800 hover:text-indigo-700 border-slate-300 hover:border-indigo-300 shadow-2xs active:bg-indigo-100 active:scale-95'
+                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-300 dark:text-slate-600 border-slate-200 dark:border-slate-800 pointer-events-none'
+                      : 'bg-white dark:bg-slate-800 hover:bg-indigo-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 hover:text-indigo-700 dark:hover:text-white border-slate-300 dark:border-slate-700 shadow-2xs active:bg-indigo-100 dark:active:bg-slate-700 active:scale-95'
                   }`}
                 >
                   {tokenItem.word}
@@ -742,7 +746,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
           type="button"
           onClick={() => handleAttack()}
           disabled={!userSentence.trim() || gameState !== 'fighting'}
-          className="w-full min-h-[48px] py-3 px-4 bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-40 text-white rounded-2xl text-sm sm:text-base font-black shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer touch-press"
+          className="w-full min-h-[48px] py-3 px-4 bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-600 hover:from-indigo-700 hover:to-violet-700 disabled:opacity-40 text-white rounded-2xl text-sm sm:text-base font-black shadow-md shadow-indigo-200 dark:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer touch-press"
         >
           <Swords className="w-5 h-5" />
           <span>TUNG ĐÒN CHÉM NGAY</span>

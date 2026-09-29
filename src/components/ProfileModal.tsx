@@ -1,13 +1,35 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
-import { Profile } from '../types';
-import { X, User, Check, AlertCircle, RefreshCw, Camera } from 'lucide-react';
+import { Profile, Badge } from '../types';
+import {
+  X,
+  User,
+  Check,
+  AlertCircle,
+  RefreshCw,
+  Camera,
+  Sun,
+  Moon,
+  Award,
+  Trophy,
+  Flame,
+  Swords,
+  BookOpen,
+  Lock,
+  Sparkles,
+  CheckCircle2,
+  Filter,
+} from 'lucide-react';
+import { getUserStats, calculateBadges } from '../lib/badgeSystem';
+import { playCriticalSound } from '../lib/soundFx';
 
 interface ProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   profile: Profile | null;
   onProfileUpdated: (updated: Profile) => void;
+  themeMode?: 'light' | 'dark';
+  onToggleTheme?: (mode: 'light' | 'dark') => void;
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
@@ -15,7 +37,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onClose,
   profile,
   onProfileUpdated,
+  themeMode = 'light',
+  onToggleTheme,
 }) => {
+  const [activeTab, setActiveTab] = useState<'badges' | 'profile'>('badges');
+  const [badgeFilter, setBadgeFilter] = useState<'all' | 'unlocked' | 'locked'>('all');
+  const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
+
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || '');
   const [uploading, setUploading] = useState(false);
@@ -23,6 +51,18 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Lấy dữ liệu thống kê & huy hiệu của học viên
+  const stats = useMemo(() => getUserStats(profile?.email), [profile?.email, isOpen]);
+  const badges = useMemo(() => calculateBadges(stats), [stats]);
+
+  const unlockedCount = useMemo(() => badges.filter((b) => b.isUnlocked).length, [badges]);
+
+  const filteredBadges = useMemo(() => {
+    if (badgeFilter === 'unlocked') return badges.filter((b) => b.isUnlocked);
+    if (badgeFilter === 'locked') return badges.filter((b) => !b.isUnlocked);
+    return badges;
+  }, [badges, badgeFilter]);
 
   if (!isOpen || !profile) return null;
 
@@ -53,7 +93,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         setAvatarUrl(data.publicUrl);
         setSuccessMsg('Tải ảnh đại diện lên Supabase Storage thành công!');
       } else {
-        // Fallback đọc dạng data URL để xem trước ngay lập tức
         const reader = new FileReader();
         reader.onload = (event) => {
           if (event.target?.result) {
@@ -107,168 +146,451 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     }
   };
 
+  const getRarityBadge = (rarity: string) => {
+    switch (rarity) {
+      case 'legendary':
+        return (
+          <span className="px-1.5 py-0.2 rounded-md bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700 text-[10px] font-black uppercase tracking-wider">
+            Huyền Thoại 👑
+          </span>
+        );
+      case 'epic':
+        return (
+          <span className="px-1.5 py-0.2 rounded-md bg-purple-100 dark:bg-purple-950/80 text-purple-800 dark:text-purple-300 border border-purple-300 dark:border-purple-700 text-[10px] font-black uppercase tracking-wider">
+            Sử Thi 🔥
+          </span>
+        );
+      case 'rare':
+        return (
+          <span className="px-1.5 py-0.2 rounded-md bg-blue-100 dark:bg-blue-950/80 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-700 text-[10px] font-black uppercase tracking-wider">
+            Hiếm ⚔️
+          </span>
+        );
+      default:
+        return (
+          <span className="px-1.5 py-0.2 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700 text-[10px] font-semibold uppercase tracking-wider">
+            Thường 🌱
+          </span>
+        );
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-auto max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-auto max-h-[92vh] flex flex-col text-slate-800 dark:text-slate-100 transition-colors">
+        {/* Nút đóng */}
         <button
           onClick={onClose}
           aria-label="Đóng"
-          className="absolute top-3.5 right-3.5 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors z-10 cursor-pointer"
+          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors z-20 cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="p-4 sm:p-8">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-slate-900">Hồ sơ cá nhân</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              Đổi ảnh đại diện và tên hiển thị của bạn
-            </p>
+        {/* Header Profile */}
+        <div className="p-5 sm:p-6 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3.5 shrink-0">
+          <div className="relative shrink-0">
+            <div className="w-13 h-13 sm:w-16 sm:h-16 rounded-2xl ring-3 ring-indigo-500 overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center shadow-md">
+              {profile.avatar_url ? (
+                <img
+                  src={profile.avatar_url}
+                  alt="Avatar"
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <User className="w-8 h-8 text-slate-400" />
+              )}
+            </div>
+            {profile.is_vip && (
+              <span className="absolute -bottom-1 -right-1 px-1 py-0.2 rounded-full bg-amber-400 text-amber-950 font-black text-[9px] uppercase shadow-xs">
+                VIP
+              </span>
+            )}
           </div>
 
-          {errorMsg && (
-            <div className="mb-4 p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-2.5 text-xs text-rose-700">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
-              <span>{errorMsg}</span>
+          <div className="min-w-0 pr-8">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base sm:text-xl font-bold text-slate-900 dark:text-white truncate">
+                {profile.full_name || 'Học viên'}
+              </h2>
+              <span className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-xs font-bold border border-indigo-200 dark:border-indigo-800 shrink-0">
+                {profile.role === 'admin' ? '🛡️ Quản trị viên' : 'Học viên'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+              {profile.email}
+            </p>
+          </div>
+        </div>
+
+        {/* Tabs chuyển đổi giữa "Huy hiệu & Thành tích" và "Hồ sơ & Thiết lập" */}
+        <div className="px-5 sm:px-6 pt-3 shrink-0">
+          <div className="flex rounded-2xl bg-slate-100 dark:bg-slate-800/80 p-1 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+            <button
+              onClick={() => setActiveTab('badges')}
+              className={`flex-1 py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === 'badges'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <Trophy className="w-3.5 h-3.5 text-amber-500" />
+              <span>Huy hiệu & Thành tích</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[10px]">
+                {unlockedCount}/{badges.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('profile')}
+              className={`flex-1 py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                activeTab === 'profile'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>Hồ sơ & Thiết lập</span>
+            </button>
+          </div>
+        </div>
+
+        {/* NỘI DUNG TỪNG TAB */}
+        <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
+          {/* TAB 1: BỘ SƯU TẬP HUY HIỆU (BADGES) */}
+          {activeTab === 'badges' && (
+            <div className="space-y-4">
+              {/* Thẻ Thống kê thành tích nổi bật */}
+              <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20 border border-amber-200/80 dark:border-amber-900/60 text-center">
+                  <Flame className="w-5 h-5 text-amber-500 mx-auto mb-1 animate-pulse" />
+                  <div className="text-lg sm:text-xl font-black text-amber-900 dark:text-amber-300">
+                    {stats.consecutiveDays} ngày
+                  </div>
+                  <span className="text-[10px] sm:text-xs font-semibold text-amber-700 dark:text-amber-400">
+                    Chuỗi học liên tục
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-950/30 dark:to-pink-950/20 border border-rose-200/80 dark:border-rose-900/60 text-center">
+                  <Swords className="w-5 h-5 text-rose-500 mx-auto mb-1" />
+                  <div className="text-lg sm:text-xl font-black text-rose-900 dark:text-rose-300">
+                    {stats.duelWins} trận
+                  </div>
+                  <span className="text-[10px] sm:text-xs font-semibold text-rose-700 dark:text-rose-400">
+                    Thắng Đấu 1v1
+                  </span>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-gradient-to-br from-indigo-50 to-cyan-50 dark:from-indigo-950/30 dark:to-cyan-950/20 border border-indigo-200/80 dark:border-indigo-900/60 text-center">
+                  <BookOpen className="w-5 h-5 text-indigo-500 mx-auto mb-1" />
+                  <div className="text-lg sm:text-xl font-black text-indigo-900 dark:text-indigo-300">
+                    {stats.totalQuestionsCompleted} câu
+                  </div>
+                  <span className="text-[10px] sm:text-xs font-semibold text-indigo-700 dark:text-indigo-400">
+                    Đã hoàn thành
+                  </span>
+                </div>
+              </div>
+
+              {/* Bộ lọc huy hiệu */}
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Bộ sưu tập Huy hiệu ({unlockedCount}/{badges.length}):
+                </span>
+                <div className="flex gap-1 text-[11px] font-bold">
+                  {(['all', 'unlocked', 'locked'] as const).map((filter) => (
+                    <button
+                      key={filter}
+                      onClick={() => setBadgeFilter(filter)}
+                      className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                        badgeFilter === filter
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {filter === 'all'
+                        ? 'Tất cả'
+                        : filter === 'unlocked'
+                        ? 'Đã mở khóa'
+                        : 'Chưa mở'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Danh sách thẻ Huy hiệu */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {filteredBadges.map((badge) => {
+                  const percentage = Math.min(
+                    100,
+                    Math.round((badge.currentValue / badge.targetValue) * 100)
+                  );
+
+                  return (
+                    <div
+                      key={badge.id}
+                      onClick={() => {
+                        playCriticalSound();
+                        setSelectedBadge(badge);
+                      }}
+                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between gap-2.5 ${
+                        badge.isUnlocked
+                          ? 'bg-gradient-to-br from-white via-indigo-50/30 to-amber-50/40 dark:from-slate-800 dark:via-slate-800/90 dark:to-indigo-950/40 border-amber-300/80 dark:border-amber-600/60 shadow-xs hover:border-amber-400'
+                          : 'bg-slate-50/70 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 opacity-80 hover:opacity-100'
+                      }`}
+                    >
+                      {/* Huy hiệu rực rỡ nếu đã mở */}
+                      {badge.isUnlocked && (
+                        <div className="absolute top-0 right-0 w-12 h-12 bg-gradient-to-bl from-amber-400/20 to-transparent rounded-bl-full pointer-events-none" />
+                      )}
+
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={`w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shadow-xs shrink-0 ${
+                            badge.isUnlocked
+                              ? 'bg-amber-100 dark:bg-amber-950/60 ring-2 ring-amber-400/70'
+                              : 'bg-slate-200 dark:bg-slate-700/80 grayscale'
+                          }`}
+                        >
+                          {badge.icon}
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate">
+                              {badge.name}
+                            </span>
+                            {getRarityBadge(badge.rarity)}
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5">
+                            {badge.description}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Thanh tiến độ đạt huy hiệu */}
+                      <div className="space-y-1 pt-1 border-t border-slate-100 dark:border-slate-700/60">
+                        <div className="flex items-center justify-between text-[10px] font-bold">
+                          <span
+                            className={
+                              badge.isUnlocked
+                                ? 'text-emerald-600 dark:text-emerald-400 flex items-center gap-1'
+                                : 'text-slate-500 dark:text-slate-400 flex items-center gap-1'
+                            }
+                          >
+                            {badge.isUnlocked ? (
+                              <>
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span>Đã hoàn thành!</span>
+                              </>
+                            ) : (
+                              <>
+                                <Lock className="w-3 h-3" />
+                                <span>
+                                  Tiến độ: {badge.currentValue}/{badge.targetValue}
+                                </span>
+                              </>
+                            )}
+                          </span>
+                          <span className="text-slate-600 dark:text-slate-400 font-mono">
+                            {percentage}%
+                          </span>
+                        </div>
+
+                        <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${
+                              badge.isUnlocked
+                                ? 'bg-gradient-to-r from-emerald-500 to-amber-500'
+                                : 'bg-indigo-500'
+                            }`}
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
-          {successMsg && (
-            <div className="mb-4 p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-2.5 text-xs text-emerald-800">
-              <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
-              <span>{successMsg}</span>
-            </div>
-          )}
+          {/* TAB 2: HỒ SƠ & THIẾT LẬP */}
+          {activeTab === 'profile' && (
+            <div className="space-y-5">
+              {errorMsg && (
+                <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-2xl flex items-start gap-2.5 text-xs text-rose-700 dark:text-rose-300">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
 
-          <form onSubmit={handleSave} className="space-y-5">
-            {/* Avatar & Upload Button */}
-            <div className="flex flex-col items-center">
-              <div className="relative group">
-                <div className="w-24 h-24 rounded-full ring-4 ring-indigo-50 overflow-hidden bg-slate-100 flex items-center justify-center shadow-md">
-                  {avatarUrl ? (
-                    <img
-                      src={avatarUrl}
-                      alt="Avatar"
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
+              {successMsg && (
+                <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl flex items-start gap-2.5 text-xs text-emerald-800 dark:text-emerald-300">
+                  <Check className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
+                  <span>{successMsg}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSave} className="space-y-5">
+                {/* Thay đổi Avatar */}
+                <div className="flex flex-col items-center">
+                  <div className="relative group">
+                    <div className="w-20 h-20 rounded-full ring-4 ring-indigo-50 dark:ring-indigo-950 overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center shadow-md">
+                      {avatarUrl ? (
+                        <img
+                          src={avatarUrl}
+                          alt="Avatar"
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <User className="w-10 h-10 text-slate-400" />
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="absolute bottom-0 right-0 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg transition-transform hover:scale-105 cursor-pointer disabled:opacity-60"
+                      title="Thay đổi ảnh đại diện"
+                    >
+                      {uploading ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Camera className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  </div>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">
+                    Tải lên ảnh PNG, JPG (tối đa 3MB)
+                  </p>
+                </div>
+
+                {/* Email (Read-only) */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                    Email tài khoản
+                  </label>
+                  <input
+                    type="text"
+                    disabled
+                    value={profile.email}
+                    className="w-full px-4 py-2.5 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-500 dark:text-slate-400 text-sm cursor-not-allowed font-mono"
+                  />
+                </div>
+
+                {/* Tên hiển thị */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                    Tên hiển thị
+                  </label>
+                  <div className="relative">
+                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      required
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      placeholder="Nhập họ và tên..."
+                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900 outline-hidden transition-all text-sm font-medium"
                     />
-                  ) : (
-                    <User className="w-12 h-12 text-slate-400" />
-                  )}
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="absolute bottom-0 right-0 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-lg transition-transform hover:scale-105 cursor-pointer disabled:opacity-60"
-                  title="Thay đổi ảnh"
-                >
-                  {uploading ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Camera className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
+                {/* Giao diện Sáng / Tối */}
+                {onToggleTheme && (
+                  <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                        Giao diện hiển thị (Theme)
+                      </label>
+                      <span className="text-[11px] font-semibold text-indigo-600 dark:text-cyan-400">
+                        {themeMode === 'dark' ? 'Đang bật Tối hoàn toàn 🌙' : 'Đang bật Sáng ☀️'}
+                      </span>
+                    </div>
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <p className="text-xs text-slate-400 mt-2">
-                Tải lên Storage bucket 'avatars' (PNG, JPG, tối đa 3MB)
-              </p>
-            </div>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => onToggleTheme('light')}
+                        className={`flex items-center justify-center gap-2 p-3 rounded-2xl border text-xs font-bold transition-all cursor-pointer ${
+                          themeMode === 'light'
+                            ? 'bg-amber-50 border-amber-400 text-amber-900 ring-2 ring-amber-200 shadow-xs'
+                            : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <Sun
+                          className={`w-4 h-4 ${
+                            themeMode === 'light'
+                              ? 'text-amber-500 fill-amber-400'
+                              : 'text-slate-400'
+                          }`}
+                        />
+                        <span>Giao diện Sáng</span>
+                      </button>
 
-            {/* Email (Read-only) */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                Email
-              </label>
-              <input
-                type="text"
-                disabled
-                value={profile.email}
-                className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-2xl text-slate-500 text-sm cursor-not-allowed"
-              />
-            </div>
-
-            {/* Role & VIP status */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Vai trò (Role)
-                </label>
-                <div className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 uppercase">
-                  {profile.role}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Thành viên
-                </label>
-                <div
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold text-center ${
-                    profile.is_vip
-                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                      : 'bg-slate-100 text-slate-700 border border-slate-200'
-                  }`}
-                >
-                  {profile.is_vip ? 'VIP MEMBER' : 'FREE USER'}
-                </div>
-              </div>
-            </div>
-
-            {/* Tên hiển thị */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Tên hiển thị
-              </label>
-              <div className="relative">
-                <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <input
-                  type="text"
-                  required
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Nhập họ và tên..."
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 outline-hidden transition-all text-sm"
-                />
-              </div>
-            </div>
-
-            {/* Nút lưu */}
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-3 px-4 border border-slate-200 text-slate-700 font-semibold rounded-2xl hover:bg-slate-50 transition-colors text-sm"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="submit"
-                disabled={saving || uploading}
-                className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-bold rounded-2xl shadow-md hover:shadow-indigo-200 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm"
-              >
-                {saving ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Đang lưu...</span>
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    <span>Lưu thay đổi</span>
-                  </>
+                      <button
+                        type="button"
+                        onClick={() => onToggleTheme('dark')}
+                        className={`flex items-center justify-center gap-2 p-3 rounded-2xl border text-xs font-bold transition-all cursor-pointer ${
+                          themeMode === 'dark'
+                            ? 'bg-slate-950 border-indigo-500 text-white ring-2 ring-indigo-400/50 shadow-md shadow-indigo-950/80'
+                            : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <Moon
+                          className={`w-4 h-4 ${
+                            themeMode === 'dark' ? 'text-cyan-400 fill-cyan-400' : 'text-slate-400'
+                          }`}
+                        />
+                        <span>Tối hoàn toàn</span>
+                      </button>
+                    </div>
+                  </div>
                 )}
-              </button>
+
+                {/* Nút lưu */}
+                <div className="flex gap-3 pt-3">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="flex-1 py-3 px-4 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-sm cursor-pointer"
+                  >
+                    Hủy bỏ
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving || uploading}
+                    className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-bold rounded-2xl shadow-md hover:shadow-indigo-200 dark:shadow-none flex items-center justify-center gap-2 transition-all cursor-pointer text-sm"
+                  >
+                    {saving ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Đang lưu...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>Lưu thay đổi</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
             </div>
-          </form>
+          )}
         </div>
       </div>
     </div>

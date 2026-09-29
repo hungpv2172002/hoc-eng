@@ -33,42 +33,40 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
   questionCounts,
 }) => {
   const isVip = profile?.is_vip ?? false;
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = profile?.email?.toLowerCase().trim() === 'hungpv2172002@gmail.com';
   const hasVipAccess = isVip || isAdmin;
 
   const handleTrackClick = (track: CareerTrackInfo) => {
-    // Luôn luôn tự động chuyển các câu để làm liên quan đến ngành nghề ngay lập tức!
     onSelectCategory(track.id);
   };
 
-
   return (
-    <div className="bg-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-slate-200/90 shadow-xs space-y-3 w-full max-w-full overflow-hidden">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-3 w-full max-w-full overflow-hidden transition-colors">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-0.5 w-full min-w-0">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="p-1.5 rounded-xl bg-amber-50 text-amber-600 border border-amber-200/80 shrink-0">
+          <span className="p-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200/80 dark:border-amber-800 shrink-0">
             <Crown className="w-4 h-4" />
           </span>
           <div className="min-w-0">
-            <h3 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
               <span className="truncate">Chủ Đề Ngành Nghề Chuyên Sâu</span>
               <span className="text-[9px] sm:text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-2xs shrink-0">
                 VIP
               </span>
             </h3>
-            <p className="text-[11px] text-slate-500 hidden xs:block truncate">
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 hidden xs:block truncate">
               Lựa chọn nội dung dịch phù hợp với công việc thực tế của bạn
             </p>
           </div>
         </div>
 
         {hasVipAccess ? (
-          <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
-            <Sparkles className="w-3 h-3 text-emerald-600" />
+          <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 shrink-0">
+            <Sparkles className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
             Đã mở khóa toàn bộ
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
+          <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full shrink-0">
             <Lock className="w-3 h-3 text-amber-500" />
             3 ngành VIP
           </span>
@@ -97,10 +95,10 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
               }}
               className={`p-2.5 sm:p-3.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between gap-1.5 sm:gap-2.5 cursor-pointer select-none touch-press ${
                 isSelected
-                  ? 'bg-indigo-50/90 border-indigo-600 text-indigo-950 ring-2 ring-indigo-200 shadow-xs'
+                  ? 'bg-indigo-50/90 dark:bg-indigo-950/70 border-indigo-600 text-indigo-950 dark:text-indigo-200 ring-2 ring-indigo-200 dark:ring-indigo-800 shadow-xs'
                   : isLocked
-                  ? 'bg-slate-50/80 hover:bg-slate-100/80 border-slate-200 text-slate-600'
-                  : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700 hover:border-slate-300'
+                  ? 'bg-slate-50/80 dark:bg-slate-800/80 hover:bg-slate-100/80 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                  : 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600'
               }`}
             >
               <div className="flex items-start justify-between gap-2 w-full">
@@ -109,8 +107,8 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
                     isSelected
                       ? 'bg-indigo-600 text-white shadow-xs'
                       : isLocked
-                      ? 'bg-amber-100/70 text-amber-700'
-                      : 'bg-slate-100 text-slate-700'
+                      ? 'bg-amber-100/70 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400'
+                      : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   <IconComponent className="w-4.5 h-4.5" />
@@ -126,19 +124,19 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
                       }}
                       className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 cursor-pointer transition-all hover:scale-105 ${
                         hasVipAccess
-                          ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                          : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300'
+                          ? 'bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                          : 'bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
                       }`}
                       title={hasVipAccess ? 'Chuyên ngành VIP' : 'Bấm để xem thông tin gói VIP'}
                     >
                       {isLocked ? (
                         <>
-                          <Lock className="w-2.5 h-2.5 text-amber-600" />
+                          <Lock className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
                           <span>VIP</span>
                         </>
                       ) : (
                         <>
-                          <Crown className="w-2.5 h-2.5 text-amber-600" />
+                          <Crown className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" />
                           <span>VIP</span>
                         </>
                       )}
@@ -146,7 +144,7 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
                   )}
 
                   {count !== undefined && count > 0 && (
-                    <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                    <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded-md">
                       {count} câu
                     </span>
                   )}
@@ -156,21 +154,21 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
               <div>
                 <h4
                   className={`text-xs font-bold leading-tight ${
-                    isSelected ? 'text-indigo-900' : 'text-slate-800'
+                    isSelected ? 'text-indigo-900 dark:text-white' : 'text-slate-800 dark:text-slate-200'
                   }`}
                 >
                   {track.name}
                 </h4>
-                <p className="text-[11px] text-slate-500 line-clamp-2 mt-0.5 leading-snug">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-0.5 leading-snug">
                   {track.description}
                 </p>
               </div>
 
               {/* Dấu chấm active */}
               {isSelected && (
-                <div className="w-full pt-1 border-t border-indigo-200 flex items-center justify-between text-[10px] font-bold text-indigo-700">
+                <div className="w-full pt-1 border-t border-indigo-200 dark:border-indigo-800 flex items-center justify-between text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
                   <span>Đang luyện tập</span>
-                  <span className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
+                  <span className="w-2 h-2 rounded-full bg-indigo-600 dark:bg-indigo-400 animate-pulse" />
                 </div>
               )}
             </div>
