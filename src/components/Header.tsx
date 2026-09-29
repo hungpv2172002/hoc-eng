@@ -46,42 +46,42 @@ export const Header: React.FC<HeaderProps> = ({
   const appIconType = settings?.appIconType || 'lucide';
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 sm:px-6 shadow-xs">
-      <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
+    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-slate-200 px-3 py-2.5 sm:px-6 sm:py-3 shadow-xs w-full max-w-full overflow-x-hidden">
+      <div className="max-w-4xl mx-auto flex items-center justify-between gap-1.5 sm:gap-2 w-full min-w-0">
         {/* Logo & Title */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 min-w-0 shrink">
           <button
             onClick={() => onViewChange('study')}
-            className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-100 transition-transform active:scale-95 cursor-pointer overflow-hidden shrink-0"
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-100 transition-transform active:scale-95 cursor-pointer overflow-hidden shrink-0"
             title={appName}
           >
             <AppIcon icon={appIcon} type={appIconType} className="w-5 h-5 text-white" />
           </button>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
               <h1
                 onClick={() => onViewChange('study')}
-                className="text-base sm:text-lg font-bold text-slate-900 leading-tight cursor-pointer hover:text-indigo-600 transition-colors truncate max-w-[160px] sm:max-w-[280px]"
+                className="text-sm sm:text-base md:text-lg font-bold text-slate-900 leading-tight cursor-pointer hover:text-indigo-600 transition-colors truncate max-w-[110px] xs:max-w-[160px] sm:max-w-[280px]"
                 title={appName}
               >
                 {appName}
               </h1>
-              <span className="hidden sm:inline-block text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+              <span className="hidden sm:inline-block text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0">
                 VN ➔ EN
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 hidden xs:block truncate max-w-[240px] sm:max-w-[360px]">
+            <p className="text-[11px] text-slate-500 hidden sm:block truncate max-w-[260px] sm:max-w-[360px]">
               {appSubtitle}
             </p>
           </div>
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {/* Nút Chế độ Đấu Boss (Tháp Ma Vương) */}
           <button
             onClick={() => onViewChange(currentView === 'battle' ? 'study' : 'battle')}
-            className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border shadow-2xs active:scale-95 shrink-0 ${
+            className={`inline-flex items-center gap-1 px-2 py-1.5 sm:px-3 rounded-xl text-xs font-black transition-all cursor-pointer border shadow-2xs active:scale-95 shrink-0 ${
               currentView === 'battle'
                 ? 'bg-slate-800 hover:bg-slate-900 text-white border-slate-700'
                 : 'bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-600 hover:to-rose-700 text-white border-amber-400 shadow-xs shadow-rose-200'
@@ -90,7 +90,7 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <span className="text-xs sm:text-sm leading-none">⚔️</span>
             <span className="text-[11px] sm:text-xs font-black whitespace-nowrap">
-              {currentView === 'battle' ? 'Về phòng học' : 'Đấu Boss'}
+              {currentView === 'battle' ? 'Phòng học' : 'Đấu Boss'}
             </span>
           </button>
 
@@ -99,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={() => onQuickAiGenerate()}
               disabled={isAiGenerating}
-              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1 px-2 py-1.5 sm:px-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shrink-0"
               title="Kích hoạt Gemini AI sinh 10 câu mới"
             >
               <Sparkles className="w-3.5 h-3.5" />
@@ -115,29 +115,29 @@ export const Header: React.FC<HeaderProps> = ({
               {isAdmin && (
                 <button
                   onClick={() => onViewChange(currentView === 'admin' ? 'study' : 'admin')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                  className={`inline-flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border shrink-0 ${
                     currentView === 'admin'
                       ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
                       : 'bg-purple-50 hover:bg-purple-100 text-purple-700 border-purple-200'
                   }`}
                   title="Chuyển đổi giao diện Quản trị"
                 >
-                  <ShieldCheck className="w-4 h-4" />
+                  <ShieldCheck className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">
-                    {currentView === 'admin' ? 'Về phòng học' : 'Quản trị'}
+                    {currentView === 'admin' ? 'Học' : 'Quản trị'}
                   </span>
                 </button>
               )}
 
               {/* Huy hiệu VIP hoặc bộ đếm câu hôm nay */}
-              <div className="flex items-center">
+              <div className="flex items-center shrink-0">
                 {isVip ? (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 font-bold text-xs border border-amber-300 shadow-xs">
-                    <Crown className="w-3.5 h-3.5 text-amber-600 fill-amber-500" />
+                  <span className="inline-flex items-center gap-0.5 px-2 py-1 rounded-full bg-amber-100 text-amber-900 font-bold text-[11px] sm:text-xs border border-amber-300 shadow-xs">
+                    <Crown className="w-3 h-3 text-amber-600 fill-amber-500" />
                     <span>VIP</span>
                   </span>
                 ) : (
-                  <div className="px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-semibold text-xs border border-slate-200">
+                  <div className="px-2 py-0.5 sm:py-1 rounded-full bg-slate-100 text-slate-700 font-semibold text-[11px] sm:text-xs border border-slate-200">
                     <span className="hidden sm:inline">Hôm nay: </span>
                     <strong className={todayCount >= 30 ? 'text-rose-600' : 'text-indigo-600'}>
                       {todayCount}/30
@@ -149,10 +149,10 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Nút Avatar & Tên (Mở Profile modal) */}
               <button
                 onClick={onOpenProfile}
-                className="flex items-center gap-1.5 p-1 pl-1.5 pr-2.5 rounded-full hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all cursor-pointer"
+                className="flex items-center gap-1 p-0.5 sm:p-1 rounded-full hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all cursor-pointer shrink-0"
                 title="Bấm để xem và sửa thông tin hồ sơ"
               >
-                <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center overflow-hidden ring-2 ring-indigo-200">
+                <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs flex items-center justify-center overflow-hidden ring-2 ring-indigo-200 shrink-0">
                   {profile.avatar_url ? (
                     <img
                       src={profile.avatar_url}
@@ -164,7 +164,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>{profile.full_name?.charAt(0).toUpperCase() || 'U'}</span>
                   )}
                 </div>
-                <span className="text-xs font-semibold text-slate-800 max-w-[80px] sm:max-w-[120px] truncate hidden xs:inline">
+                <span className="text-xs font-semibold text-slate-800 max-w-[70px] sm:max-w-[120px] truncate hidden md:inline">
                   {profile.full_name || 'Học viên'}
                 </span>
               </button>
@@ -172,26 +172,27 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Nút Đăng xuất */}
               <button
                 onClick={onSignOut}
-                className="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
                 title="Đăng xuất"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-3.5 h-3.5" />
               </button>
             </>
           ) : (
-            /* Khi chưa đăng nhập: 2 nút riêng biệt Đăng nhập và Đăng ký */
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            /* Khi chưa đăng nhập: 2 nút nhỏ gọn không làm tràn ngang */
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               <button
                 onClick={() => onOpenAuth('login')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all cursor-pointer shadow-2xs"
               >
                 <LogIn className="w-3.5 h-3.5 text-slate-500" />
-                <span>Đăng nhập</span>
+                <span className="hidden xs:inline">Đăng nhập</span>
+                <span className="xs:hidden">Vào</span>
               </button>
 
               <button
                 onClick={() => onOpenAuth('register')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-100 hover:shadow-indigo-200 transition-all cursor-pointer"
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs hover:shadow-indigo-200 transition-all cursor-pointer"
               >
                 <UserPlus className="w-3.5 h-3.5" />
                 <span>Đăng ký</span>

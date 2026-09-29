@@ -479,10 +479,10 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900">
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900 w-full max-w-full overflow-x-hidden">
       {/* Toast */}
       {toastMessage && (
-        <div className="fixed top-4 right-4 z-50 animate-in fade-in slide-in-from-top-4">
+        <div className="fixed top-4 right-4 z-50 animate-in fade-in slide-in-from-top-4 max-w-[calc(100vw-2rem)]">
           <div
             className={`px-4 py-3 rounded-2xl shadow-xl border flex items-center gap-2.5 text-xs font-semibold ${
               toastMessage.type === 'success'
@@ -519,7 +519,7 @@ export default function App() {
       />
 
       {/* MAIN CONTAINER */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-2.5 sm:px-6 py-3 sm:py-8">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-2.5 sm:px-6 py-3 sm:py-8 overflow-x-hidden min-w-0">
         {currentView === 'study' ? (
           <StudyView
             questions={questions}
@@ -556,8 +556,8 @@ export default function App() {
 
 
       {/* FOOTER */}
-      <footer className="border-t border-slate-200 bg-white py-6 text-xs text-slate-500">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4">
+      <footer className="border-t border-slate-200 bg-white py-6 text-xs text-slate-500 w-full max-w-full overflow-hidden">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 w-full min-w-0">
           {/* Bản quyền & Thông tin ứng dụng */}
           <div className="flex flex-col sm:flex-row items-center gap-2 text-center sm:text-left">
             <p className="font-medium text-slate-600">

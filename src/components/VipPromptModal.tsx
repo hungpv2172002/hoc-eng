@@ -22,15 +22,15 @@ export const VipPromptModal: React.FC<VipPromptModalProps> = ({
   if (!isOpen || !track) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-      <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-amber-200/90 space-y-6 relative overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in overflow-y-auto">
+      <div className="bg-white rounded-3xl max-w-lg w-full p-4 sm:p-8 shadow-2xl border border-amber-200/90 space-y-5 relative overflow-hidden my-auto max-h-[92vh] overflow-y-auto">
         {/* Nền ánh kim nhẹ */}
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-gradient-to-br from-amber-200/40 to-indigo-200/40 rounded-full blur-2xl pointer-events-none" />
 
         {/* Nút đóng */}
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer z-10"
         >
           <X className="w-5 h-5" />
         </button>

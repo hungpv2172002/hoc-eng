@@ -367,7 +367,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
   ) || CAREER_TRACKS[0];
 
   return (
-    <div className="max-w-3xl w-full mx-auto space-y-6">
+    <div className="max-w-3xl w-full mx-auto space-y-4 sm:space-y-6 overflow-x-hidden">
       {/* 0. THANH LỰA CHỌN CHỦ ĐỀ NGÀNH NGHỀ DÀNH CHO VIP */}
       <CareerTrackSelector
         selectedCategory={selectedCategory}
@@ -386,20 +386,20 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
       {/* BANNER MINI-GAME ĐẤU BOSS */}
       {onOpenBattle && (
-        <div className="p-4 bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 rounded-3xl text-white shadow-md flex flex-wrap items-center justify-between gap-3 animate-in fade-in">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-2xl shadow-inner shrink-0">
+        <div className="p-3.5 sm:p-4 bg-gradient-to-r from-amber-500 via-rose-500 to-indigo-600 rounded-2xl sm:rounded-3xl text-white shadow-md flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in w-full min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center text-xl shadow-inner shrink-0">
               ⚔️
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-black text-sm sm:text-base">Mini-Game: Tháp Ma Vương</span>
-                <span className="px-2 py-0.5 rounded-full bg-yellow-300 text-amber-950 font-black text-[10px] uppercase shadow-2xs">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="font-black text-xs sm:text-base truncate">Mini-Game: Tháp Ma Vương</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-yellow-300 text-amber-950 font-black text-[9px] uppercase shadow-2xs shrink-0">
                   Mới
                 </span>
               </div>
-              <p className="text-xs text-white/90">
-                Luyện dịch câu để vung kiếm chém quái, vượt 6 tầng tháp và rinh vàng!
+              <p className="text-[11px] sm:text-xs text-white/90 line-clamp-1 sm:line-clamp-none">
+                Luyện dịch câu chém quái, vượt 6 tầng tháp rinh vàng!
               </p>
             </div>
           </div>
@@ -407,31 +407,31 @@ export const StudyView: React.FC<StudyViewProps> = ({
           <button
             type="button"
             onClick={onOpenBattle}
-            className="px-4 py-2 bg-white hover:bg-amber-50 text-slate-900 rounded-2xl font-black text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shrink-0"
+            className="px-3 py-1.5 sm:px-4 sm:py-2 bg-white hover:bg-amber-50 text-slate-900 rounded-xl font-black text-xs shadow-md transition-all flex items-center gap-1 cursor-pointer active:scale-95 shrink-0"
           >
-            <span>Vào đấu Boss ngay</span>
-            <ChevronRight className="w-4 h-4 text-rose-600" />
+            <span>Vào đấu Boss</span>
+            <ChevronRight className="w-3.5 h-3.5 text-rose-600" />
           </button>
         </div>
       )}
 
       {/* THÔNG BÁO KHI ĐANG LỌC THEO TRÌNH ĐỘ */}
       {selectedLevel !== 'all' && (
-        <div className="p-3.5 bg-indigo-50/90 border border-indigo-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-indigo-950 animate-in fade-in">
-          <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 rounded-lg bg-indigo-600 text-white font-extrabold font-mono text-xs shadow-2xs">
+        <div className="p-3 bg-indigo-50/90 border border-indigo-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs text-indigo-950 animate-in fade-in w-full min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="px-2 py-0.5 rounded-lg bg-indigo-600 text-white font-extrabold font-mono text-xs shadow-2xs shrink-0">
               {selectedLevel}
             </span>
-            <span>
-              Đang hiển thị câu hỏi phù hợp với trình độ <strong>{CEFR_LEVELS.find((l) => l.id === selectedLevel)?.name} ({selectedLevel})</strong> ({filteredQuestions.length} câu).
+            <span className="truncate">
+              Trình độ <strong>{CEFR_LEVELS.find((l) => l.id === selectedLevel)?.name} ({selectedLevel})</strong> ({filteredQuestions.length} câu).
             </span>
           </div>
           <button
             type="button"
             onClick={() => handleSelectLevel('all')}
-            className="text-indigo-700 hover:text-indigo-900 font-bold underline cursor-pointer text-xs"
+            className="text-indigo-700 hover:text-indigo-900 font-bold underline cursor-pointer text-xs shrink-0"
           >
-            Làm tất cả trình độ
+            Làm tất cả
           </button>
         </div>
       )}
@@ -453,25 +453,25 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
       {/* THÔNG BÁO KHI ĐANG HỌC CHỦ ĐỀ CHUYÊN NGÀNH */}
       {selectedCategory !== 'general' && (
-        <div className="p-3.5 bg-gradient-to-r from-indigo-50 via-purple-50 to-amber-50 border border-indigo-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs text-indigo-950 animate-in fade-in">
-          <div className="flex items-center gap-2">
-            <span className="p-1 rounded-lg bg-indigo-600 text-white shadow-2xs">
+        <div className="p-3 bg-gradient-to-r from-indigo-50 via-purple-50 to-amber-50 border border-indigo-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs text-indigo-950 animate-in fade-in w-full min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="p-1 rounded-lg bg-indigo-600 text-white shadow-2xs shrink-0">
               <Sparkles className="w-3.5 h-3.5" />
             </span>
-            <span>
-              Đang làm bài tập chuyên sâu: <strong>{currentCategoryInfo.name}</strong> ({filteredQuestions.length} câu thực tế).
+            <span className="truncate">
+              Chuyên sâu: <strong>{currentCategoryInfo.name}</strong> ({filteredQuestions.length} câu).
             </span>
           </div>
           {!hasVipAccess ? (
             <button
               onClick={() => setVipModalTrack(currentCategoryInfo)}
-              className="text-amber-800 hover:text-amber-950 font-bold flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-amber-200 shadow-2xs hover:bg-amber-50 transition-all text-[11px]"
+              className="text-amber-800 hover:text-amber-950 font-bold flex items-center gap-1 cursor-pointer bg-white px-2.5 py-1 rounded-lg border border-amber-200 shadow-2xs hover:bg-amber-50 transition-all text-[11px] shrink-0"
             >
               <Crown className="w-3.5 h-3.5 text-amber-500" />
               <span>Xem quyền lợi VIP</span>
             </button>
           ) : (
-            <span className="text-emerald-700 font-bold text-[11px] flex items-center gap-1">
+            <span className="text-emerald-700 font-bold text-[11px] flex items-center gap-1 shrink-0">
               <CheckCircle className="w-3.5 h-3.5" />
               Đặc quyền VIP
             </span>
@@ -481,25 +481,24 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
       {/* 1. MÀN HÌNH KHÓA NẾU ĐẠT MỐC 30 CÂU CỦA THÀNH VIÊN THƯỜNG */}
       {isFreeLimitReached ? (
-
-        <div className="bg-white rounded-3xl p-8 text-center shadow-xl border border-amber-200 animate-in fade-in zoom-in-95">
+        <div className="bg-white rounded-3xl p-6 sm:p-8 text-center shadow-xl border border-amber-200 animate-in fade-in zoom-in-95 w-full min-w-0">
           <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-inner">
             <Award className="w-8 h-8" />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 mb-2">
+          <h2 className="text-xl sm:text-2xl font-bold text-slate-900 mb-2">
             Chúc mừng bạn đã hoàn thành 30 câu hôm nay! 🎉
           </h2>
           <p className="text-slate-600 mb-6 text-sm leading-relaxed max-w-md mx-auto">
             Bạn đã hoàn thành giới hạn 30 câu hôm nay. Nâng cấp VIP để học không giới hạn và mở khóa toàn bộ chuyên ngành IT, Kinh Doanh, Khách Sạn!
           </p>
 
-          <div className="inline-flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="inline-flex flex-col sm:flex-row items-center justify-center gap-3 w-full">
             <button
               onClick={() => {
                 const itTrack = CAREER_TRACKS.find((t) => t.id === 'it') || CAREER_TRACKS[1];
                 setVipModalTrack(itTrack);
               }}
-              className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-2xl shadow-lg shadow-amber-200 hover:brightness-105 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto px-6 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 text-white font-bold rounded-2xl shadow-lg shadow-amber-200 hover:brightness-105 transition-all flex items-center justify-center gap-2 cursor-pointer touch-press"
             >
               <Crown className="w-5 h-5 fill-white" />
               <span>Nâng cấp VIP để mở khóa toàn bộ</span>
@@ -507,24 +506,21 @@ export const StudyView: React.FC<StudyViewProps> = ({
           </div>
         </div>
       ) : !currentQuestion ? (
-        <div className="text-center py-16 bg-white rounded-3xl border border-slate-200">
+        <div className="text-center py-16 bg-white rounded-3xl border border-slate-200 w-full min-w-0">
           <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mx-auto mb-3" />
           <p className="text-slate-500 font-medium">Đang tải danh sách câu hỏi...</p>
         </div>
       ) : (
         /* 2. GIAO DIỆN HỌC BÀI */
-        <div className="space-y-5">
+        <div className="space-y-4 sm:space-y-5 w-full min-w-0">
           {/* Thanh trạng thái ngày & Đảo ngẫu nhiên */}
-          <div className="bg-white/80 backdrop-blur-xs border border-slate-200/80 rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5 text-xs shadow-2xs">
-            <div className="flex items-center gap-2 text-slate-600">
-              <span className="p-1 rounded-lg bg-indigo-50 text-indigo-600">
+          <div className="bg-white/80 backdrop-blur-xs border border-slate-200/80 rounded-2xl px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs shadow-2xs w-full min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-slate-600 min-w-0">
+              <span className="p-1 rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
                 <CalendarDays className="w-3.5 h-3.5" />
               </span>
-              <span className="font-semibold text-slate-800">
+              <span className="font-semibold text-slate-800 truncate">
                 {formatFriendlyDate(todayDateString)}
-              </span>
-              <span className="hidden sm:inline-block text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200">
-                Tự động đảo câu ngẫu nhiên khi tải trang
               </span>
             </div>
 
@@ -532,7 +528,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
               <button
                 type="button"
                 onClick={handleManualShuffle}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 font-semibold transition-all cursor-pointer text-xs active:scale-95"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-600 border border-slate-200 hover:border-indigo-200 font-semibold transition-all cursor-pointer text-xs active:scale-95 shrink-0 touch-press"
                 title="Bấm để đảo ngẫu nhiên toàn bộ thứ tự câu hỏi ngay lập tức"
               >
                 <Shuffle className="w-3.5 h-3.5 text-indigo-500" />
@@ -541,34 +537,34 @@ export const StudyView: React.FC<StudyViewProps> = ({
             )}
           </div>
 
-          {/* Thanh chỉ số & Tiến độ */}
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500 px-1">
-            <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold">
-                CÂU {currentIndex + 1} / {filteredQuestions.length}
+          {/* Thanh chỉ số & Tiến độ (RESPONSIVE CHUẨN, KHÔNG BỊ TRÀN NGANG) */}
+          <div className="flex flex-wrap items-center justify-between text-xs font-semibold text-slate-500 px-0.5 gap-2 w-full min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+              <span className="px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 font-bold shrink-0">
+                CÂU {currentIndex + 1}/{filteredQuestions.length}
               </span>
-              <span className="text-slate-400">•</span>
-              <span className="px-2 py-0.5 rounded-md bg-violet-100 text-violet-800 font-extrabold text-[11px] font-mono">
+              <span className="px-1.5 py-0.5 rounded-md bg-violet-100 text-violet-800 font-extrabold text-[11px] font-mono shrink-0">
                 {getQuestionLevel(currentQuestion)}
               </span>
-              <span className="text-slate-400">•</span>
-              <span className="text-slate-700 font-medium">
+              <span className="text-slate-700 font-medium truncate max-w-[110px] xs:max-w-[150px] sm:max-w-[220px]">
                 {currentCategoryInfo.name}
               </span>
-              <span className="text-slate-400">•</span>
-              <span>{hasVipAccess ? 'Học không giới hạn (VIP)' : `Hôm nay: ${todayCount}/30 câu`}</span>
+              <span className="text-slate-400 hidden xs:inline">•</span>
+              <span className="shrink-0 text-[11px] sm:text-xs">
+                {hasVipAccess ? 'VIP Không giới hạn' : `${todayCount}/30 câu`}
+              </span>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 shrink-0 ml-auto">
               <button
                 onClick={handlePrev}
-                className="px-2 py-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg text-xs cursor-pointer"
+                className="px-2 py-1 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg text-xs cursor-pointer touch-press"
               >
                 Câu trước
               </button>
               <button
                 onClick={handleNext}
-                className="px-2 py-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg text-xs font-semibold cursor-pointer"
+                className="px-2 py-1 text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-lg text-xs font-semibold cursor-pointer touch-press"
               >
                 Câu kế
               </button>
@@ -587,47 +583,47 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
           {/* THẺ HỌC TẬP CHÍNH */}
           <div
-            className={`bg-white rounded-3xl p-6 sm:p-8 shadow-xl transition-all duration-300 border ${
+            className={`bg-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-7 shadow-xl transition-all duration-300 border w-full max-w-full overflow-hidden ${
               resultState === 'correct'
-                ? 'border-emerald-500 ring-4 ring-emerald-100'
+                ? 'border-emerald-500 ring-2 sm:ring-4 ring-emerald-100'
                 : resultState === 'wrong'
-                ? 'border-rose-400 ring-4 ring-rose-100'
+                ? 'border-rose-400 ring-2 sm:ring-4 ring-rose-100'
                 : 'border-slate-200'
             }`}
           >
             {/* Header thẻ: Ngành nghề & Bộ điều chỉnh tốc độ nghe */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100 w-full min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                 <span
-                  className={`text-xs font-bold px-2.5 py-1 rounded-xl flex items-center gap-1.5 ${
+                  className={`text-xs font-bold px-2 py-1 rounded-xl flex items-center gap-1 min-w-0 ${
                     currentQuestion.category && currentQuestion.category !== 'general'
                       ? 'bg-amber-100 text-amber-900 border border-amber-200/80'
                       : 'bg-indigo-50 text-indigo-800 border border-indigo-100'
                   }`}
                 >
-                  {currentQuestion.category === 'it' && <Code2 className="w-3.5 h-3.5 text-blue-600" />}
-                  {currentQuestion.category === 'business' && <Briefcase className="w-3.5 h-3.5 text-amber-600" />}
-                  {currentQuestion.category === 'hospitality' && <Hotel className="w-3.5 h-3.5 text-emerald-600" />}
+                  {currentQuestion.category === 'it' && <Code2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />}
+                  {currentQuestion.category === 'business' && <Briefcase className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
+                  {currentQuestion.category === 'hospitality' && <Hotel className="w-3.5 h-3.5 text-emerald-600 shrink-0" />}
                   {(!currentQuestion.category || currentQuestion.category === 'general') && (
-                    <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                    <MessageSquare className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                   )}
-                  <span>{currentCategoryInfo.name}</span>
+                  <span className="truncate max-w-[120px] sm:max-w-none">{currentCategoryInfo.name}</span>
                 </span>
                 {currentQuestion.category && currentQuestion.category !== 'general' && (
-                  <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-white">
+                  <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-white shrink-0">
                     VIP
                   </span>
                 )}
-                <span className="text-xs font-bold px-2.5 py-1 rounded-xl bg-violet-50 text-violet-800 border border-violet-200/80 flex items-center gap-1 font-mono">
+                <span className="text-xs font-bold px-2 py-1 rounded-xl bg-violet-50 text-violet-800 border border-violet-200/80 flex items-center gap-1 font-mono shrink-0">
                   <span>Trình độ {getQuestionLevel(currentQuestion)}</span>
                 </span>
               </div>
 
-              {/* BỘ CHỌN TỐC ĐỘ PHÁT ÂM (0.75x, 0.9x, 1.0x, 1.25x) */}
-              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 rounded-xl p-1 text-xs">
-                <div className="flex items-center gap-1 px-1.5 text-slate-400 font-semibold text-[11px]">
-                  <Gauge className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Tốc độ:</span>
+              {/* BỘ CHỌN TỐC ĐỘ PHÁT ÂM */}
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-200/80 rounded-xl p-1 text-xs shrink-0">
+                <div className="flex items-center gap-0.5 px-1 text-slate-400 font-semibold text-[10px] sm:text-[11px]">
+                  <Gauge className="w-3 h-3 text-slate-500" />
+                  <span className="hidden xs:inline">Tốc độ:</span>
                 </div>
                 {SPEED_OPTIONS.map((opt) => (
                   <button
@@ -638,7 +634,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
                       playSpeech(currentQuestion.answers[0], opt.value);
                     }}
                     title={`${opt.label} - ${opt.desc}`}
-                    className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    className={`px-1.5 sm:px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       audioSpeed === opt.value
                         ? 'bg-indigo-600 text-white shadow-2xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
@@ -651,21 +647,21 @@ export const StudyView: React.FC<StudyViewProps> = ({
             </div>
 
             {/* Câu tiếng Việt in đậm */}
-            <div className="mb-5">
+            <div className="mb-4 sm:mb-5 w-full min-w-0">
               <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
                 <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider">
                   Dịch sang tiếng Anh:
                 </span>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 sm:gap-2">
                   {/* Nút Trợ lý Tra từ vựng AI & Google Dịch */}
                   <button
                     type="button"
                     onClick={() => setIsLookupModalOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-800 border-indigo-200/90 shadow-2xs active:scale-95"
-                    title="Bí từ? Bấm để tra từ vựng bằng AI bám sát ngữ cảnh câu hoặc mở Google Dịch"
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer bg-gradient-to-r from-indigo-50 to-purple-50 hover:from-indigo-100 hover:to-purple-100 text-indigo-800 border-indigo-200/90 shadow-2xs active:scale-95 touch-press"
+                    title="Bí từ? Bấm để tra từ vựng bằng AI"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    <Sparkles className="w-3 h-3 text-indigo-600" />
                     <span>Tra từ AI</span>
                   </button>
 
@@ -673,27 +669,27 @@ export const StudyView: React.FC<StudyViewProps> = ({
                   <button
                     type="button"
                     onClick={handleToggleHints}
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-xl text-xs font-bold border transition-all cursor-pointer touch-press ${
                       showHints
                         ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-200 shadow-2xs'
                         : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200'
                     }`}
-                    title={showHints ? 'Bấm để ẩn gợi ý (Tự thử thách ghi nhớ)' : 'Bấm để hiển thị gợi ý từ vựng'}
+                    title={showHints ? 'Bấm để ẩn gợi ý' : 'Bấm để hiển thị gợi ý'}
                   >
                     {showHints ? (
                       <>
-                        <EyeOff className="w-3.5 h-3.5 text-amber-700" />
+                        <EyeOff className="w-3 h-3 text-amber-700" />
                         <span>Ẩn gợi ý</span>
                       </>
                     ) : (
                       <>
-                        <Eye className="w-3.5 h-3.5 text-indigo-600" />
+                        <Eye className="w-3 h-3 text-indigo-600" />
                         <span className="text-indigo-700">Hiện gợi ý</span>
                       </>
                     )}
                   </button>
 
-                  {/* Nút Nghe mẫu kèm tốc độ */}
+                  {/* Nút Nghe mẫu */}
                   <AudioButton
                     text={currentQuestion.answers[0]}
                     speed={audioSpeed}
@@ -703,23 +699,23 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 </div>
               </div>
 
-              <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 leading-snug">
+              <h2 className="text-lg sm:text-2xl font-extrabold text-slate-900 leading-snug break-words">
                 {currentQuestion.vi}
               </h2>
             </div>
 
             {/* Hộp gợi ý từ vựng (Hiển thị hoặc Ẩn) */}
             {showHints ? (
-              <div className="mb-6 p-4 bg-amber-50/80 border border-amber-200/90 rounded-2xl flex items-start justify-between gap-3 shadow-2xs transition-all animate-in fade-in">
-                <div className="flex items-start gap-3 flex-1">
+              <div className="mb-4 sm:mb-6 p-3 sm:p-4 bg-amber-50/80 border border-amber-200/90 rounded-2xl flex items-start justify-between gap-2.5 shadow-2xs transition-all animate-in fade-in w-full min-w-0">
+                <div className="flex items-start gap-2.5 flex-1 min-w-0">
                   <div className="p-1.5 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5">
-                    <Lightbulb className="w-4 h-4" />
+                    <Lightbulb className="w-3.5 h-3.5" />
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <span className="text-xs font-bold text-amber-900 block mb-0.5 uppercase tracking-wide">
                       Gợi ý từ vựng & cấu trúc:
                     </span>
-                    <p className="text-xs sm:text-sm text-amber-900 font-medium leading-relaxed">
+                    <p className="text-xs sm:text-sm text-amber-900 font-medium leading-relaxed break-words">
                       {currentQuestion.hints}
                     </p>
                   </div>
@@ -727,35 +723,35 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 <button
                   type="button"
                   onClick={handleToggleHints}
-                  className="shrink-0 p-1.5 text-amber-700 hover:text-amber-950 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer text-xs flex items-center gap-1 font-semibold"
-                  title="Ẩn gợi ý để tự thử thách"
+                  className="shrink-0 p-1 text-amber-700 hover:text-amber-950 hover:bg-amber-100 rounded-lg transition-colors cursor-pointer text-xs flex items-center gap-1 font-semibold touch-press"
+                  title="Ẩn gợi ý"
                 >
-                  <EyeOff className="w-4 h-4" />
+                  <EyeOff className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Ẩn</span>
                 </button>
               </div>
             ) : (
-              <div className="mb-6 p-3.5 bg-slate-50/80 border border-dashed border-slate-300 rounded-2xl flex items-center justify-between gap-3 transition-all hover:bg-slate-100/60 animate-in fade-in">
-                <div className="flex items-center gap-2.5">
-                  <span className="p-1.5 bg-slate-200/80 text-slate-500 rounded-xl">
-                    <Lightbulb className="w-4 h-4" />
+              <div className="mb-4 sm:mb-6 p-3 bg-slate-50/80 border border-dashed border-slate-300 rounded-2xl flex items-center justify-between gap-2 transition-all hover:bg-slate-100/60 animate-in fade-in w-full min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="p-1 bg-slate-200/80 text-slate-500 rounded-xl shrink-0">
+                    <Lightbulb className="w-3.5 h-3.5" />
                   </span>
-                  <div>
-                    <span className="text-xs font-bold text-slate-700 block">
+                  <div className="min-w-0">
+                    <span className="text-xs font-bold text-slate-700 block truncate">
                       Gợi ý từ vựng đang được ẩn
                     </span>
-                    <span className="text-[11px] text-slate-500">
-                      Tự thử thách khả năng ghi nhớ từ vựng và cấu trúc
+                    <span className="text-[11px] text-slate-500 truncate block">
+                      Tự thử thách khả năng ghi nhớ
                     </span>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={handleToggleHints}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-indigo-50 text-indigo-700 font-bold rounded-xl border border-indigo-200 shadow-2xs hover:border-indigo-300 transition-all text-xs cursor-pointer active:scale-95"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-indigo-50 text-indigo-700 font-bold rounded-xl border border-indigo-200 shadow-2xs hover:border-indigo-300 transition-all text-xs cursor-pointer active:scale-95 shrink-0 touch-press"
                 >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>Hiện gợi ý</span>
+                  <Eye className="w-3 h-3" />
+                  <span>Hiện</span>
                 </button>
               </div>
             )}

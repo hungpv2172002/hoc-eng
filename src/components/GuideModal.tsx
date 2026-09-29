@@ -221,7 +221,7 @@ CRON_SECRET=my_super_secret_cron_token_12345`;
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 bg-slate-100/60 px-4 sm:px-6 gap-2 pt-2 text-xs font-bold">
+        <div className="flex border-b border-slate-200 bg-slate-100/60 px-3 sm:px-6 gap-1.5 sm:gap-2 pt-2 text-xs font-bold overflow-x-auto no-scrollbar whitespace-nowrap">
           <button
             onClick={() => setActiveTab('sql')}
             className={`py-2.5 px-4 rounded-t-xl transition-all cursor-pointer flex items-center gap-1.5 ${

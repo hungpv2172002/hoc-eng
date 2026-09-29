@@ -1,18 +1,40 @@
 @import "tailwindcss";
 
 @layer base {
-  html, body {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
+    position: relative;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     -webkit-touch-callout: none;
-    text-size-adjust: 100%;
-    -webkit-text-size-adjust: 100%;
     overscroll-behavior-y: none;
+  }
+
+  #root {
+    overflow-x: hidden;
+    max-width: 100vw;
+    width: 100%;
+    min-height: 100vh;
   }
 
   input, textarea, select {
     font-size: 16px !important; /* Prevents auto-zoom on iOS Safari */
     touch-action: manipulation;
+    max-width: 100%;
   }
 
   button {

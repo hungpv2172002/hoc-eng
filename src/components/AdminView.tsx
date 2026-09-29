@@ -289,7 +289,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-5xl w-full mx-auto space-y-6 overflow-x-hidden">
       {/* Toast */}
       {toast && (
         <div

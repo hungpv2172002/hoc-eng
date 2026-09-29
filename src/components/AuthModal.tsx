@@ -700,18 +700,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-auto max-h-[92vh] overflow-y-auto">
         {/* Nút đóng modal */}
         <button
           onClick={onClose}
           aria-label="Đóng"
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors z-10 cursor-pointer"
+          className="absolute top-3.5 right-3.5 p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors z-10 cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="p-6 sm:p-8">
+        <div className="p-4 sm:p-8">
           {/* ==================================================== */}
           {/* MÀN HÌNH NHẬP MÃ OTP ĐĂNG KÝ (BẮT BUỘC TỪ EMAIL)   */}
           {/* ==================================================== */}
@@ -777,7 +777,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
               {/* Form 6 ô nhập mã OTP từ Email */}
               <form onSubmit={handleVerifyOtpAndCreateAccount} className="space-y-5">
-                <div className="flex justify-center gap-2 sm:gap-2.5">
+                <div className="flex justify-center gap-1.5 xs:gap-2 sm:gap-2.5">
                   {otpInputs.map((digit, idx) => (
                     <input
                       key={idx}
@@ -790,7 +790,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       value={digit}
                       onChange={(e) => handleOtpChange(idx, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                      className="w-11 h-13 sm:w-12 sm:h-14 text-center text-xl font-bold font-mono bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-hidden transition-all text-slate-900 shadow-2xs"
+                      className="w-9 h-11 xs:w-11 xs:h-13 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold font-mono bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl sm:rounded-2xl outline-hidden transition-all text-slate-900 shadow-2xs"
                     />
                   ))}
                 </div>
@@ -929,7 +929,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider text-center mb-2">
                       Nhập mã xác thực 6 số từ email
                     </label>
-                    <div className="flex justify-center gap-2 sm:gap-2.5 mb-3">
+                    <div className="flex justify-center gap-1.5 xs:gap-2 sm:gap-2.5 mb-3">
                       {otpInputs.map((digit, idx) => (
                         <input
                           key={idx}
@@ -942,7 +942,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                           value={digit}
                           onChange={(e) => handleOtpChange(idx, e.target.value)}
                           onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                          className="w-10 h-12 sm:w-11 sm:h-13 text-center text-lg font-bold font-mono bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-hidden transition-all text-slate-900 shadow-2xs"
+                          className="w-9 h-11 xs:w-10 xs:h-12 sm:w-11 sm:h-13 text-center text-lg font-bold font-mono bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl sm:rounded-2xl outline-hidden transition-all text-slate-900 shadow-2xs"
                         />
                       ))}
                     </div>

@@ -43,40 +43,40 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
 
 
   return (
-    <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/90 shadow-xs space-y-3">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-1">
-        <div className="flex items-center gap-2">
-          <span className="p-1.5 rounded-xl bg-amber-50 text-amber-600 border border-amber-200/80">
+    <div className="bg-white rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 border border-slate-200/90 shadow-xs space-y-3 w-full max-w-full overflow-hidden">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 px-0.5 w-full min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="p-1.5 rounded-xl bg-amber-50 text-amber-600 border border-amber-200/80 shrink-0">
             <Crown className="w-4 h-4" />
           </span>
-          <div>
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-              <span>Chủ Đề Ngành Nghề Chuyên Sâu</span>
-              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-2xs">
-                VIP Exclusive
+          <div className="min-w-0">
+            <h3 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <span className="truncate">Chủ Đề Ngành Nghề Chuyên Sâu</span>
+              <span className="text-[9px] sm:text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-2xs shrink-0">
+                VIP
               </span>
             </h3>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-slate-500 hidden xs:block truncate">
               Lựa chọn nội dung dịch phù hợp với công việc thực tế của bạn
             </p>
           </div>
         </div>
 
         {hasVipAccess ? (
-          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+          <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
             <Sparkles className="w-3 h-3 text-emerald-600" />
-            Đã mở khóa toàn bộ chuyên ngành
+            Đã mở khóa toàn bộ
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+          <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full shrink-0">
             <Lock className="w-3 h-3 text-amber-500" />
-            3 ngành nghề độc quyền cho VIP
+            3 ngành VIP
           </span>
         )}
       </div>
 
       {/* Grid danh sách 4 phân loại ngành nghề (2 cột gọn gàng trên di động) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5 pt-1">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5 pt-1 w-full min-w-0">
         {CAREER_TRACKS.map((track) => {
           const isSelected = selectedCategory === track.id;
           const isLocked = track.isVipOnly && !hasVipAccess;

@@ -14,21 +14,21 @@ export const LevelSelector: React.FC<LevelSelectorProps> = ({
   levelCounts,
 }) => {
   return (
-    <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200/80 shadow-2xs">
-      <div className="flex items-center justify-between gap-2 mb-2.5 px-0.5">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 uppercase tracking-wider">
-          <span className="p-1 rounded-lg bg-indigo-50 text-indigo-600">
+    <div className="bg-white rounded-2xl p-3 sm:p-4 border border-slate-200/80 shadow-2xs w-full max-w-full overflow-hidden">
+      <div className="flex items-center justify-between gap-2 mb-2.5 px-0.5 w-full min-w-0">
+        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 uppercase tracking-wider min-w-0">
+          <span className="p-1 rounded-lg bg-indigo-50 text-indigo-600 shrink-0">
             <Layers className="w-3.5 h-3.5" />
           </span>
-          <span>Chọn Trình Độ Luyện Dịch</span>
+          <span className="truncate">Chọn Trình Độ Luyện Dịch</span>
         </div>
-        <span className="text-[11px] text-slate-400 font-medium hidden sm:inline-block">
+        <span className="text-[11px] text-slate-400 font-medium hidden sm:inline-block shrink-0">
           Tự động lọc câu hỏi theo năng lực của bạn
         </span>
       </div>
 
       {/* Grid các nút chọn trình độ CEFR */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2 w-full min-w-0">
         {CEFR_LEVELS.map((lvl) => {
           const isSelected = selectedLevel === lvl.id;
           const count = levelCounts ? levelCounts[lvl.id] : undefined;
