@@ -38,7 +38,7 @@ export const LevelSelector: React.FC<LevelSelectorProps> = ({
               key={lvl.id}
               type="button"
               onClick={() => onSelectLevel(lvl.id)}
-              className={`relative flex flex-col items-center justify-center p-2 sm:py-2.5 sm:px-2 rounded-xl border text-center transition-all cursor-pointer select-none ${
+              className={`relative flex flex-col items-center justify-center p-2 sm:py-2.5 sm:px-2 rounded-xl border text-center transition-all cursor-pointer select-none touch-press ${
                 isSelected
                   ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm ring-2 ring-indigo-200 -translate-y-0.5'
                   : 'bg-slate-50/70 hover:bg-slate-100/90 text-slate-700 border-slate-200/80 hover:border-slate-300'

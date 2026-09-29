@@ -75,8 +75,8 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
         )}
       </div>
 
-      {/* Grid danh sách 4 phân loại ngành nghề */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
+      {/* Grid danh sách 4 phân loại ngành nghề (2 cột gọn gàng trên di động) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5 pt-1">
         {CAREER_TRACKS.map((track) => {
           const isSelected = selectedCategory === track.id;
           const isLocked = track.isVipOnly && !hasVipAccess;
@@ -95,7 +95,7 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
                   handleTrackClick(track);
                 }
               }}
-              className={`p-3.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between gap-2.5 cursor-pointer select-none ${
+              className={`p-2.5 sm:p-3.5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between gap-1.5 sm:gap-2.5 cursor-pointer select-none touch-press ${
                 isSelected
                   ? 'bg-indigo-50/90 border-indigo-600 text-indigo-950 ring-2 ring-indigo-200 shadow-xs'
                   : isLocked

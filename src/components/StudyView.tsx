@@ -30,6 +30,8 @@ import {
   Layers,
   Eye,
   EyeOff,
+  X,
+  Delete,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import {
@@ -264,6 +266,39 @@ export const StudyView: React.FC<StudyViewProps> = ({
   };
 
   const currentQuestion = filteredQuestions[currentIndex] || filteredQuestions[0];
+
+  // Danh sách từ gợi ý nhanh từ câu trả lời (hỗ trợ thao tác chạm từ siêu mượt trên điện thoại)
+  const wordChips = useMemo(() => {
+    if (!currentQuestion?.answers?.[0]) return [];
+    const rawWords = currentQuestion.answers[0]
+      .replace(/[.,!?;:()"]/g, '')
+      .split(/\s+/)
+      .filter((w) => w.length > 0);
+    // Xáo trộn nhẹ để người học chọn từ
+    return [...rawWords].sort((a, b) => {
+      const hashA = (a.charCodeAt(0) * 17 + a.length) % 31;
+      const hashB = (b.charCodeAt(0) * 17 + b.length) % 31;
+      return hashA - hashB;
+    });
+  }, [currentQuestion?.id]);
+
+  const handleChipClick = (word: string) => {
+    setUserAnswer((prev) => {
+      const trimmed = prev.trim();
+      return trimmed ? `${trimmed} ${word}` : word;
+    });
+    if (resultState !== 'idle') setResultState('idle');
+  };
+
+  const handleRemoveLastWord = () => {
+    setUserAnswer((prev) => {
+      const words = prev.trim().split(/\s+/);
+      if (words.length <= 1) return '';
+      words.pop();
+      return words.join(' ');
+    });
+    if (resultState !== 'idle') setResultState('idle');
+  };
 
   const handleManualShuffle = () => {
     setShuffleSeed((prev) => prev + 1);
@@ -726,7 +761,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
             )}
 
             {/* Form nhập câu trả lời tiếng Anh */}
-            <form onSubmit={handleCheck} className="space-y-4">
+            <form onSubmit={handleCheck} className="space-y-3.5">
               <div className="relative">
                 <textarea
                   rows={3}
@@ -741,13 +776,78 @@ export const StudyView: React.FC<StudyViewProps> = ({
                       handleCheck(e);
                     }
                   }}
-                  placeholder="Gõ câu dịch tiếng Anh của bạn tại đây (Nhấn Enter để kiểm tra)..."
-                  className="w-full p-4 pr-32 text-base sm:text-lg bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden transition-all resize-none font-medium leading-relaxed"
-                  autoFocus
+                  placeholder="Gõ câu dịch tiếng Anh hoặc chạm các từ gợi ý bên dưới..."
+                  className="w-full p-3.5 sm:p-4 pr-10 text-base sm:text-lg bg-slate-50 border border-slate-200 rounded-2xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:border-indigo-600 focus:ring-4 focus:ring-indigo-100 outline-hidden transition-all resize-none font-medium leading-relaxed"
                 />
 
-                {/* Cụm Loa + Tốc độ nghe trực tiếp trong khung nhập câu trả lời */}
-                <div className="absolute bottom-3 right-3 flex items-center gap-1">
+                {/* Nút xóa nhanh nội dung đã nhập */}
+                {userAnswer.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUserAnswer('');
+                      if (resultState !== 'idle') setResultState('idle');
+                    }}
+                    className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/80 transition-colors touch-press cursor-pointer"
+                    title="Xóa toàn bộ câu đã nhập"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* KHU VỰC TỪ GỢI Ý CHỌN NHANH (GIÚP THAO TÁC TRÊN ĐIỆN THOẠI CỰC MƯỢT) */}
+              {wordChips.length > 0 && (
+                <div className="p-3 bg-slate-50/80 border border-slate-200/80 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <span>Chạm từ để thêm nhanh vào câu:</span>
+                    {userAnswer.trim() && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveLastWord}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-rose-600 cursor-pointer touch-press"
+                      >
+                        <Delete className="w-3 h-3" />
+                        <span>Xóa từ cuối</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {wordChips.map((chip, chipIdx) => {
+                      const isUsed = userAnswer.toLowerCase().includes(chip.toLowerCase());
+                      return (
+                        <button
+                          key={`${chip}-${chipIdx}`}
+                          type="button"
+                          onClick={() => handleChipClick(chip)}
+                          className={`min-h-[36px] px-2.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold border transition-all cursor-pointer select-none touch-press ${
+                            isUsed
+                              ? 'bg-slate-200/70 text-slate-400 border-slate-300'
+                              : 'bg-white hover:bg-indigo-50 text-slate-800 hover:text-indigo-700 border-slate-200 shadow-2xs active:scale-95'
+                          }`}
+                        >
+                          {chip}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Thanh tiện ích bổ trợ: Tra từ AI & Loa nghe */}
+              <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setIsLookupModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer group touch-press"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-500 group-hover:rotate-12 transition-transform" />
+                  <span className="group-hover:underline">Bí từ? Tra nhanh bằng AI</span>
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-slate-400 hidden sm:inline">Phát âm mẫu:</span>
                   <AudioButton
                     text={currentQuestion.answers[0]}
                     speed={audioSpeed}
@@ -756,19 +856,6 @@ export const StudyView: React.FC<StudyViewProps> = ({
                     showSpeedSelector={false}
                   />
                 </div>
-              </div>
-
-              {/* Dòng trợ giúp tra từ vựng AI */}
-              <div className="flex items-center justify-between px-1 text-xs -mt-1">
-                <button
-                  type="button"
-                  onClick={() => setIsLookupModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-semibold cursor-pointer group"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-500 group-hover:rotate-12 transition-transform" />
-                  <span className="group-hover:underline">Bí từ vựng? Bấm để tra cứu nhanh với AI & Google Dịch</span>
-                </button>
-                <span className="hidden sm:inline text-slate-400 text-[11px]">Nhấn Enter để kiểm tra</span>
               </div>
 
               {/* Thông báo kết quả so khớp */}
@@ -815,11 +902,11 @@ export const StudyView: React.FC<StudyViewProps> = ({
               )}
 
               {/* Hàng nút bấm thao tác */}
-              <div className="flex items-center gap-3 pt-2">
+              <div className="flex items-center gap-2.5 pt-1">
                 <button
                   type="button"
                   onClick={handleNext}
-                  className="px-4 py-3.5 border border-slate-200 text-slate-600 hover:text-slate-800 font-semibold rounded-2xl hover:bg-slate-50 transition-colors text-sm cursor-pointer"
+                  className="min-h-[48px] px-4 py-3 border border-slate-200 text-slate-600 hover:text-slate-800 font-semibold rounded-2xl hover:bg-slate-50 transition-colors text-sm cursor-pointer touch-press shrink-0"
                 >
                   Bỏ qua câu này
                 </button>
@@ -827,7 +914,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
                 <button
                   type="submit"
                   disabled={!userAnswer.trim() || submitting}
-                  className="flex-1 py-3.5 px-6 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-2xl shadow-lg shadow-indigo-100 hover:shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer text-base"
+                  className="min-h-[48px] flex-1 py-3 px-6 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-2xl shadow-md shadow-indigo-100 hover:shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer text-base touch-press"
                 >
                   {submitting ? (
                     <RefreshCw className="w-5 h-5 animate-spin" />

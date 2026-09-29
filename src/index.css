@@ -1,1 +1,40 @@
 @import "tailwindcss";
+
+@layer base {
+  html, body {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior-y: none;
+  }
+
+  input, textarea, select {
+    font-size: 16px !important; /* Prevents auto-zoom on iOS Safari */
+    touch-action: manipulation;
+  }
+
+  button {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+}
+
+/* Ẩn thanh cuộn nhưng vẫn cuộn ngang mượt mà trên điện thoại */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Touch active feedback */
+@media (hover: none) and (pointer: coarse) {
+  .touch-press:active {
+    transform: scale(0.96);
+    transition: transform 0.08s ease-out;
+  }
+}

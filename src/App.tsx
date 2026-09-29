@@ -519,7 +519,7 @@ export default function App() {
       />
 
       {/* MAIN CONTAINER */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-10">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-2.5 sm:px-6 py-3 sm:py-8">
         {currentView === 'study' ? (
           <StudyView
             questions={questions}
