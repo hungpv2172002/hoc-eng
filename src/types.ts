@@ -8,7 +8,7 @@ export interface Profile {
   created_at: string;
 }
 
-export type CareerCategory = 'general' | 'it' | 'business' | 'hospitality';
+export type CareerCategory = string;
 
 export interface CareerTrackInfo {
   id: CareerCategory;
@@ -171,6 +171,7 @@ export interface AppSettings {
   contactFacebook?: string;
   contactTiktok?: string;
   contactTelegram?: string;
+  customCareerTracks?: CareerTrackInfo[];
 }
 
 // Khách hàng & CRM quản lý bán gói
@@ -251,10 +252,15 @@ export interface DuelQuestionItem {
   hints: string;
   level?: string;
   category?: string;
-  answers: string[]; // Chứa đáp án chuẩn
+  answers?: string[]; // Present only on the legacy server; online snapshots omit answers.
+  wordBank?: string[];
 }
 
 export interface DuelRoomState {
+  matchId?: string;
+  startsAt?: number;
+  deadlineAt?: number;
+  finishReason?: string;
   roomId: string;
   status: 'waiting' | 'countdown' | 'in_progress' | 'finished';
   category: string;
@@ -308,4 +314,5 @@ export interface UserStats {
   friendsCount: number;
   unlockedBadgeIds: string[];
 }
+
 

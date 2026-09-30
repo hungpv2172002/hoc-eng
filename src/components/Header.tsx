@@ -58,9 +58,9 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 py-2.5 sm:py-3 shadow-xs w-full max-w-full transition-colors">
-      <div className="app-container px-3 sm:px-6 flex items-center justify-between gap-1.5 sm:gap-2 min-w-0">
+      <div className="app-container px-3 sm:px-6 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 min-w-0">
         {/* Logo & Title */}
-        <div className="flex items-center gap-2 min-w-0 shrink">
+        <div className="flex w-full sm:w-auto items-center gap-2 min-w-0 shrink">
           <button
             onClick={() => onViewChange('study')}
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-100 dark:shadow-none transition-transform active:scale-95 cursor-pointer overflow-hidden shrink-0"
@@ -88,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Right Actions */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+        <div className="flex w-full sm:w-auto flex-wrap items-center justify-center sm:justify-end gap-1.5 sm:gap-2 shrink-0">
           {/* Nút Chế độ Đấu 1v1 Song Song Trực Tuyến */}
           <button
             onClick={() => onViewChange(currentView === 'duel' ? 'study' : 'duel')}

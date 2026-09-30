@@ -16,6 +16,7 @@ interface CareerTrackSelectorProps {
   profile: Profile | null;
   onOpenVipPrompt: (track: CareerTrackInfo) => void;
   questionCounts?: Record<CareerCategory, number>;
+  tracks?: CareerTrackInfo[];
 }
 
 export const TRACK_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -31,6 +32,7 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
   profile,
   onOpenVipPrompt,
   questionCounts,
+  tracks = CAREER_TRACKS,
 }) => {
   const isVip = profile?.is_vip ?? false;
   const isAdmin = profile?.email?.toLowerCase().trim() === 'hungpv2172002@gmail.com';
@@ -75,7 +77,7 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
 
       {/* Grid danh sách 4 phân loại ngành nghề (2 cột gọn gàng trên di động) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5 pt-1 w-full min-w-0">
-        {CAREER_TRACKS.map((track) => {
+        {tracks.map((track) => {
           const isSelected = selectedCategory === track.id;
           const isLocked = track.isVipOnly && !hasVipAccess;
           const IconComponent = TRACK_ICONS[track.icon] || MessageSquare;
