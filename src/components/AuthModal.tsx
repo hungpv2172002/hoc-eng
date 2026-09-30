@@ -142,12 +142,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     const newOtp = [...otpInputs];
     // Nếu người dùng dán cả chuỗi 6 số từ email
     if (value.length > 1) {
-      const pastedDigits = value.slice(0, 6).split('');
-      for (let i = 0; i < 6; i++) {
+      const pastedDigits = value.slice(0, otpInputs.length).split('');
+      for (let i = 0; i < otpInputs.length; i++) {
         newOtp[i] = pastedDigits[i] || '';
       }
       setOtpInputs(newOtp);
-      const nextIndex = Math.min(pastedDigits.length, 5);
+      const nextIndex = Math.min(pastedDigits.length, otpInputs.length - 1);
       otpRefs.current[nextIndex]?.focus();
       return;
     }
@@ -156,7 +156,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setOtpInputs(newOtp);
 
     // Tự động focus sang ô tiếp theo
-    if (value && index < 5) {
+    if (value && index < otpInputs.length - 1) {
       otpRefs.current[index + 1]?.focus();
     }
   };
@@ -167,67 +167,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Hàm hoàn tất tạo và kích hoạt tài khoản người dùng
-  const finalizeCreateUserAccount = async (
-    targetEmail: string,
-    targetName: string,
-    targetPasswordHash: string,
-    rawPassword?: string
-  ): Promise<Profile> => {
-    if (!isSupabaseConfigured) throw new Error('Chưa kết nối database tài khoản. Vui lòng liên hệ quản trị viên trước khi đăng ký.');
-    const cleanEmail = targetEmail.trim().toLowerCase();
-    const displayName = targetName.trim() || cleanEmail.split('@')[0];
-    const isAdmin = cleanEmail === ADMIN_EMAIL;
-    let registeredUser: Profile | null = null;
-
-    // 1. Đồng bộ lên Supabase nếu có cấu hình
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password: rawPassword || '12345678',
-          options: {
-            data: {
-              full_name: displayName,
-            },
-          },
-        });
-
-        if (error) throw error;
-        if (!data?.user) throw new Error('Không thể tạo tài khoản trong database.');
-        if (!data.session) throw new Error('Vui lòng xác nhận email Supabase rồi đăng nhập. Tài khoản chưa được lưu trên trình duyệt.');
-        if (!error && data?.user) {
-          registeredUser = {
-            id: data.user.id,
-            email: cleanEmail,
-            full_name: displayName,
-            avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}`,
-            role: isAdmin ? 'admin' : 'user',
-            is_vip: isAdmin,
-            created_at: new Date().toISOString(),
-          };
-
-          try {
-            const { data: existing, error: existingError } = await supabase.from('profiles').select('*').eq('id', data.user.id).maybeSingle();
-            if (existingError) throw existingError;
-            if (existing) return existing as Profile;
-            const { error: createError } = await supabase.from('profiles').upsert(registeredUser, { onConflict: 'id', ignoreDuplicates: true });
-            if (createError) throw createError;
-            const { data: stored, error: readError } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
-            if (readError) throw readError;
-            registeredUser = stored as Profile;
-          } catch (pErr) {
-            throw pErr;
-          }
-        }
-      } catch (supaErr) {
-        throw supaErr;
-      }
-    }
-
-    if (!registeredUser) throw new Error('Tài khoản chưa được lưu trên database.');
-
-    return registeredUser;
+  // Only an authenticated Supabase session may load the persisted account.
+  const loadRegisteredProfile = async (userId: string): Promise<Profile> => {
+    const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (error || !data) throw new Error('Đã xác thực email nhưng chưa tải được hồ sơ. Vui lòng thử đăng nhập lại.');
+    return data as Profile;
   };
 
   // Gửi lại mã OTP về Email (Đăng ký hoặc Quên mật khẩu)
@@ -249,12 +193,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           email: targetEmail,
           fullName: targetName,
           type: targetType,
+          ...(targetType === 'register' ? { password: pendingReg?.rawPassword } : {}),
         }),
       });
 
       if (res.ok && res.data?.success && res.data?.emailSent) {
         setResendCountdown(60);
-        setOtpInputs(['', '', '', '', '', '']);
+        setOtpInputs(Array(res.data.otpLength || 6).fill(''));
         setSuccessMsg('Mã xác thực mới đã được gửi vào hòm thư email của bạn.');
         setTimeout(() => setSuccessMsg(''), 5000);
         otpRefs.current[0]?.focus();
@@ -294,20 +239,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
 
     try {
-      // Kiểm tra xem email này đã tồn tại trong hệ thống chưa
-      const localUsersJson = localStorage.getItem('app_registered_users');
-      const localUsers: any[] = localUsersJson ? JSON.parse(localUsersJson) : [];
-      const isExisted = localUsers.some((u) => u.email === cleanEmail);
-
-      if (isExisted) {
-        setErrorMsg('Địa chỉ email này đã được đăng ký tài khoản. Bạn vui lòng chuyển sang tab Đăng nhập.');
-        setLoading(false);
-        return;
-      }
-
-      // Mã hóa mật khẩu an toàn bằng PBKDF2 + SHA-256 + Salt 16-byte ngẫu nhiên
-      const hashed = await hashPassword(cleanPass);
-
       // Gọi server API gửi mã 6 số về hòm thư email của người dùng
       const res = await safeFetchApi('/api/auth/send-otp', {
         method: 'POST',
@@ -316,6 +247,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           email: cleanEmail,
           fullName: cleanName,
           type: 'register',
+          password: cleanPass,
         }),
       });
 
@@ -323,7 +255,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       if (res.ok && res.data?.success && res.data?.emailSent) {
         const newPending: PendingRegistration = {
           email: cleanEmail,
-          passwordHash: hashed,
+          passwordHash: '',
           fullName: cleanName || cleanEmail.split('@')[0],
           rawPassword: cleanPass,
         };
@@ -331,8 +263,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         setPendingReg(newPending);
         setRegisterStep('otp');
         setResendCountdown(60);
-        setOtpInputs(['', '', '', '', '', '']);
-        setSuccessMsg(`Hệ thống đã gửi mã xác thực 6 chữ số vào hòm thư ${cleanEmail}. Vui lòng kiểm tra email để lấy mã.`);
+        setOtpInputs(Array(res.data.otpLength || 6).fill(''));
+        setSuccessMsg(`Hệ thống đã gửi mã xác thực vào hòm thư ${cleanEmail}. Vui lòng kiểm tra email để lấy mã.`);
 
         setTimeout(() => {
           otpRefs.current[0]?.focus();
@@ -366,7 +298,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
 
     const enteredOtp = otpInputs.join('').trim();
-    if (enteredOtp.length < 6) {
+    if (enteredOtp.length < otpInputs.length) {
       setErrorMsg('Vui lòng nhập đủ 6 chữ số mã xác thực từ email.');
       return;
     }
@@ -374,30 +306,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
 
     try {
-      // Xác thực mã với server
-      const verifyRes = await safeFetchApi('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: pendingReg.email,
-          otp: enteredOtp,
-        }),
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: pendingReg.email, token: enteredOtp, type: 'email',
       });
-
-      if (!verifyRes.ok || !verifyRes.data?.success) {
-        setErrorMsg(
-          verifyRes.data.error || 'Mã xác thực không chính xác. Vui lòng kiểm tra lại hòm thư email của bạn.'
-        );
-        setLoading(false);
-        return;
+      if (error || !data.session || !data.user) {
+        throw new Error('Mã xác thực không đúng hoặc đã hết hạn. Vui lòng lấy mã mới nhất trong email hoặc bấm Gửi lại mã.');
       }
-
-      const registeredUser = await finalizeCreateUserAccount(
-        pendingReg.email,
-        pendingReg.fullName,
-        pendingReg.passwordHash,
-        pendingReg.rawPassword
-      );
+      const registeredUser = await loadRegisteredProfile(data.user.id);
 
       setSuccessMsg('Xác thực email thành công! Tài khoản của bạn đã được kích hoạt.');
       setTimeout(() => {
@@ -482,7 +397,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     const enteredOtp = otpInputs.join('').trim();
     const cleanNewPass = newPassword.trim();
 
-    if (enteredOtp.length < 6) {
+    if (enteredOtp.length < otpInputs.length) {
       setErrorMsg('Vui lòng nhập đủ 6 chữ số mã xác thực nhận được từ email.');
       return;
     }
@@ -726,7 +641,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   Xác thực mã từ Email
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-500 mt-1.5 leading-relaxed">
-                  Mã xác thực gồm 6 chữ số đã được gửi tới hộp thư:
+                  Mã xác thực đã được gửi tới hộp thư:
                   <br />
                   <strong className="text-slate-800 font-semibold text-sm">{pendingReg?.email}</strong>
                 </p>
@@ -773,11 +688,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       }}
                       type="text"
                       inputMode="numeric"
-                      maxLength={6}
+                      maxLength={otpInputs.length}
                       value={digit}
                       onChange={(e) => handleOtpChange(idx, e.target.value)}
                       onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                      className="w-9 h-11 xs:w-11 xs:h-13 sm:w-12 sm:h-14 text-center text-lg sm:text-xl font-bold font-mono bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl sm:rounded-2xl outline-hidden transition-all text-slate-900 shadow-2xs"
+                      className="min-w-0 flex-1 max-w-12 h-12 text-center text-lg sm:text-xl font-bold font-mono bg-slate-50 border-2 border-slate-200 focus:border-indigo-600 focus:bg-white rounded-xl sm:rounded-2xl outline-hidden transition-all text-slate-900 shadow-2xs"
                     />
                   ))}
                 </div>
@@ -804,7 +719,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 {/* Nút xác nhận & kích hoạt */}
                 <button
                   type="submit"
-                  disabled={loading || otpInputs.join('').length < 6}
+                  disabled={loading || otpInputs.join('').length < otpInputs.length}
                   className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md hover:shadow-indigo-200 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm"
                 >
                   {loading ? (
@@ -925,7 +840,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                           }}
                           type="text"
                           inputMode="numeric"
-                          maxLength={6}
+                          maxLength={otpInputs.length}
                           value={digit}
                           onChange={(e) => handleOtpChange(idx, e.target.value)}
                           onKeyDown={(e) => handleOtpKeyDown(idx, e)}
@@ -999,7 +914,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
                   <button
                     type="submit"
-                    disabled={loading || otpInputs.join('').length < 6}
+                    disabled={loading || otpInputs.join('').length < otpInputs.length}
                     className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md hover:shadow-indigo-200 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm mt-2"
                   >
                     {loading ? (
@@ -1248,3 +1163,4 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     </div>
   );
 };
+

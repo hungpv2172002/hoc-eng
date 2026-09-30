@@ -1903,20 +1903,34 @@ function createMailTransporter() {
 }
 app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
   try {
-    const { email, fullName, type = "register" } = req.body || {};
+    const { email, fullName, password, type = "register" } = req.body || {};
     const cleanEmail = (email || "").trim().toLowerCase();
     const otpType = type === "forgot" ? "forgot" : "register";
     if (!cleanEmail || !cleanEmail.includes("@")) {
       return res.status(400).json({ success: false, error: "\u0110\u1ECBa ch\u1EC9 email kh\xF4ng h\u1EE3p l\u1EC7." });
     }
-    const otpNumber = 1e5 + crypto2.randomInt(0, 9e5);
-    const otp = otpNumber.toString();
-    otpMemoryStore.set(cleanEmail, {
-      otp,
-      expiresAt: Date.now() + 10 * 60 * 1e3,
-      type: otpType
-    });
     const transporter = createMailTransporter();
+    if (!transporter) return res.status(503).json({ success: false, error: "D\u1ECBch v\u1EE5 g\u1EEDi email ch\u01B0a s\u1EB5n s\xE0ng." });
+    let otp;
+    if (otpType === "register") {
+      if (!supabaseAdmin) return res.status(503).json({ success: false, error: "D\u1ECBch v\u1EE5 t\xE0i kho\u1EA3n ch\u01B0a s\u1EB5n s\xE0ng." });
+      if (typeof password !== "string" || password.length < 6 || password.length > 256) {
+        return res.status(400).json({ success: false, error: "M\u1EADt kh\u1EA9u c\u1EA7n t\u1EEB 6 \u0111\u1EBFn 256 k\xFD t\u1EF1. Vui l\xF2ng t\u1EA3i l\u1EA1i trang r\u1ED3i \u0111\u0103ng k\xFD." });
+      }
+      const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+        type: "signup",
+        email: cleanEmail,
+        password,
+        options: { data: { full_name: String(fullName || "").slice(0, 100) } }
+      });
+      if (error || !data?.properties?.email_otp) {
+        return res.status(400).json({ success: false, error: "Kh\xF4ng th\u1EC3 \u0111\u0103ng k\xFD email n\xE0y. N\u1EBFu \u0111\xE3 c\xF3 t\xE0i kho\u1EA3n, h\xE3y \u0111\u0103ng nh\u1EADp ho\u1EB7c ch\u1ECDn Qu\xEAn m\u1EADt kh\u1EA9u." });
+      }
+      otp = data.properties.email_otp;
+    } else {
+      otp = String(1e5 + crypto2.randomInt(0, 9e5));
+      otpMemoryStore.set(cleanEmail, { otp, expiresAt: Date.now() + 10 * 60 * 1e3, type: otpType });
+    }
     let emailSent = false;
     let mailError = null;
     if (transporter) {
@@ -1924,7 +1938,7 @@ app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
         const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || `Daily Translation <noreply@dailytranslation.app>`;
         const isForgot = otpType === "forgot";
         const emailSubject = isForgot ? `[Daily Translation] M\xE3 kh\xF4i ph\u1EE5c m\u1EADt kh\u1EA9u: ${otp}` : `[Daily Translation] M\xE3 x\xE1c th\u1EF1c \u0111\u0103ng k\xFD t\xE0i kho\u1EA3n: ${otp}`;
-        const greetingName = fullName || cleanEmail.split("@")[0];
+        const greetingName = String(fullName || cleanEmail.split("@")[0]).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
         const actionText = isForgot ? "B\u1EA1n (ho\u1EB7c ai \u0111\xF3) v\u1EEBa y\xEAu c\u1EA7u <strong>kh\xF4i ph\u1EE5c m\u1EADt kh\u1EA9u</strong> t\xE0i kho\u1EA3n h\u1ECDc t\u1EADp tr\xEAn <strong>Daily Translation</strong>." : "B\u1EA1n \u0111ang th\u1EF1c hi\u1EC7n <strong>\u0111\u0103ng k\xFD t\xE0i kho\u1EA3n h\u1ECDc t\u1EADp</strong> tr\xEAn <strong>Daily Translation</strong>.";
         const reminderText = isForgot ? "N\u1EBFu b\u1EA1n kh\xF4ng y\xEAu c\u1EA7u \u0111\u1EB7t l\u1EA1i m\u1EADt kh\u1EA9u, vui l\xF2ng b\u1ECF qua email n\xE0y. M\u1EADt kh\u1EA9u hi\u1EC7n t\u1EA1i c\u1EE7a b\u1EA1n v\u1EABn \u0111\u01B0\u1EE3c gi\u1EEF an to\xE0n." : "V\xEC l\xFD do an to\xE0n b\u1EA3o m\u1EADt, tuy\u1EC7t \u0111\u1ED1i kh\xF4ng chia s\u1EBB m\xE3 n\xE0y cho ng\u01B0\u1EDDi kh\xE1c.";
         await transporter.sendMail({
@@ -1941,13 +1955,13 @@ app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
                 Xin ch\xE0o <strong>${greetingName}</strong>,
               </p>
               <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-                ${actionText} D\u01B0\u1EDBi \u0111\xE2y l\xE0 m\xE3 x\xE1c th\u1EF1c 6 ch\u1EEF s\u1ED1 c\u1EE7a b\u1EA1n:
+                ${actionText} D\u01B0\u1EDBi \u0111\xE2y l\xE0 m\xE3 x\xE1c th\u1EF1c c\u1EE7a b\u1EA1n:
               </p>
               <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 16px; padding: 24px; text-align: center; margin: 24px 0;">
                 <span style="font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #1e1b4b; font-family: monospace;">${otp}</span>
               </div>
               <p style="color: #64748b; font-size: 13px; line-height: 1.6;">
-                \u23F0 M\xE3 n\xE0y c\xF3 hi\u1EC7u l\u1EF1c trong v\xF2ng <strong>10 ph\xFAt</strong>. ${reminderText}
+                \u23F0 H\xE3y s\u1EED d\u1EE5ng m\xE3 s\u1EDBm. N\u1EBFu m\xE3 h\u1EBFt h\u1EA1n, b\u1EA1n c\xF3 th\u1EC3 y\xEAu c\u1EA7u g\u1EEDi l\u1EA1i. ${reminderText}
               </p>
               <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8;">
                 Daily Translation App \u2022 H\u1EC7 th\u1ED1ng h\u1ECDc ti\u1EBFng Anh giao ti\u1EBFp th\xF4ng minh
@@ -1984,6 +1998,7 @@ app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
       success: true,
       emailSent: true,
       hasSmtpConfigured: true,
+      otpLength: otp.length,
       message: "M\xE3 x\xE1c th\u1EF1c 6 ch\u1EEF s\u1ED1 \u0111\xE3 \u0111\u01B0\u1EE3c g\u1EEDi t\u1EDBi email c\u1EE7a b\u1EA1n."
     });
   } catch (err) {

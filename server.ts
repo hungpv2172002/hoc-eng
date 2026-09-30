@@ -753,7 +753,7 @@ function createMailTransporter() {
 // Endpoint gửi mã xác thực 6 chữ số đến hộp thư Email (Đăng ký & Quên mật khẩu)
 app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
   try {
-    const { email, fullName, type = 'register' } = req.body || {};
+    const { email, fullName, password, type = 'register' } = req.body || {};
     const cleanEmail = (email || '').trim().toLowerCase();
     const otpType: 'register' | 'forgot' = type === 'forgot' ? 'forgot' : 'register';
 
@@ -761,18 +761,27 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
       return res.status(400).json({ success: false, error: 'Địa chỉ email không hợp lệ.' });
     }
 
-    // Sinh mã ngẫu nhiên 6 số bảo mật bằng crypto
-    const otpNumber = 100000 + crypto.randomInt(0, 900000);
-    const otp = otpNumber.toString();
-
-    // Lưu mã trong 10 phút
-    otpMemoryStore.set(cleanEmail, {
-      otp,
-      expiresAt: Date.now() + 10 * 60 * 1000,
-      type: otpType,
-    });
-
     const transporter = createMailTransporter();
+    if (!transporter) return res.status(503).json({ success: false, error: 'Dịch vụ gửi email chưa sẵn sàng.' });
+    let otp: string;
+    if (otpType === 'register') {
+      if (!supabaseAdmin) return res.status(503).json({ success: false, error: 'Dịch vụ tài khoản chưa sẵn sàng.' });
+      if (typeof password !== 'string' || password.length < 6 || password.length > 256) {
+        return res.status(400).json({ success: false, error: 'Mật khẩu cần từ 6 đến 256 ký tự. Vui lòng tải lại trang rồi đăng ký.' });
+      }
+      // Supabase owns token storage, expiration and verification across Vercel instances.
+      const { data, error } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'signup', email: cleanEmail, password,
+        options: { data: { full_name: String(fullName || '').slice(0, 100) } },
+      });
+      if (error || !data?.properties?.email_otp) {
+        return res.status(400).json({ success: false, error: 'Không thể đăng ký email này. Nếu đã có tài khoản, hãy đăng nhập hoặc chọn Quên mật khẩu.' });
+      }
+      otp = data.properties.email_otp;
+    } else {
+      otp = String(100000 + crypto.randomInt(0, 900000));
+      otpMemoryStore.set(cleanEmail, { otp, expiresAt: Date.now() + 10 * 60 * 1000, type: otpType });
+    }
     let emailSent = false;
     let mailError: string | null = null;
 
@@ -788,7 +797,7 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
           ? `[Daily Translation] Mã khôi phục mật khẩu: ${otp}`
           : `[Daily Translation] Mã xác thực đăng ký tài khoản: ${otp}`;
 
-        const greetingName = fullName || cleanEmail.split('@')[0];
+        const greetingName = String(fullName || cleanEmail.split('@')[0]).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
         const actionText = isForgot
           ? 'Bạn (hoặc ai đó) vừa yêu cầu <strong>khôi phục mật khẩu</strong> tài khoản học tập trên <strong>Daily Translation</strong>.'
           : 'Bạn đang thực hiện <strong>đăng ký tài khoản học tập</strong> trên <strong>Daily Translation</strong>.';
@@ -811,13 +820,13 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
                 Xin chào <strong>${greetingName}</strong>,
               </p>
               <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-                ${actionText} Dưới đây là mã xác thực 6 chữ số của bạn:
+                ${actionText} Dưới đây là mã xác thực của bạn:
               </p>
               <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 16px; padding: 24px; text-align: center; margin: 24px 0;">
                 <span style="font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #1e1b4b; font-family: monospace;">${otp}</span>
               </div>
               <p style="color: #64748b; font-size: 13px; line-height: 1.6;">
-                ⏰ Mã này có hiệu lực trong vòng <strong>10 phút</strong>. ${reminderText}
+                ⏰ Hãy sử dụng mã sớm. Nếu mã hết hạn, bạn có thể yêu cầu gửi lại. ${reminderText}
               </p>
               <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8;">
                 Daily Translation App • Hệ thống học tiếng Anh giao tiếp thông minh
@@ -859,6 +868,7 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
       success: true,
       emailSent: true,
       hasSmtpConfigured: true,
+      otpLength: otp.length,
       message: 'Mã xác thực 6 chữ số đã được gửi tới email của bạn.',
     });
   } catch (err: any) {
