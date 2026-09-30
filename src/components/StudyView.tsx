@@ -58,6 +58,7 @@ interface StudyViewProps {
   todayDateString?: string;
   onOpenBattle?: () => void;
   onOpenDuel?: () => void;
+  customTracks?: CareerTrackInfo[];
 }
 
 export function normalizeSentence(text: string): string {
@@ -84,6 +85,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
   todayDateString,
   onOpenBattle,
   onOpenDuel,
+  customTracks = [],
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
@@ -110,6 +112,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   // 2. Phân loại ngành nghề cho VIP
   const [selectedCategory, setSelectedCategory] = useState<CareerCategory>('general');
+  const careerTracks = useMemo(() => [...CAREER_TRACKS, ...customTracks], [customTracks]);
   const [vipModalTrack, setVipModalTrack] = useState<CareerTrackInfo | null>(null);
   const [shuffleSeed, setShuffleSeed] = useState(0);
 
@@ -186,12 +189,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   // Đếm số lượng câu hỏi theo từng chuyên ngành
   const questionCounts = useMemo(() => {
-    const counts: Record<CareerCategory, number> = {
-      general: 0,
-      it: 0,
-      business: 0,
-      hospitality: 0,
-    };
+    const counts: Record<CareerCategory, number> = Object.fromEntries(careerTracks.map((track) => [track.id, 0]));
     allAvailableQuestions.forEach((q) => {
       const cat = q.category || 'general';
       if (counts[cat] !== undefined) {
@@ -199,7 +197,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
       }
     });
     return counts;
-  }, [allAvailableQuestions]);
+  }, [allAvailableQuestions, careerTracks]);
 
   // Đếm số lượng câu hỏi theo từng trình độ CEFR cho chuyên ngành hiện tại
   const levelCounts = useMemo(() => {
@@ -364,9 +362,9 @@ export const StudyView: React.FC<StudyViewProps> = ({
   };
 
   // Icon & nhãn cho từng category
-  const currentCategoryInfo = CAREER_TRACKS.find(
+  const currentCategoryInfo = careerTracks.find(
     (t) => t.id === (currentQuestion?.category || 'general')
-  ) || CAREER_TRACKS[0];
+  ) || careerTracks[0];
 
   return (
     <div className="w-full mx-auto space-y-4 sm:space-y-6 overflow-x-clip">
@@ -377,6 +375,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         profile={profile}
         onOpenVipPrompt={(track) => setVipModalTrack(track)}
         questionCounts={questionCounts}
+        tracks={careerTracks}
       />
 
       {/* 0.1. THANH LỰA CHỌN TRÌNH ĐỘ CEFR (A1, A2, B1, B2, C1, TẤT CẢ) */}

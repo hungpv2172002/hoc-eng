@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Profile, AppSettings, Customer, CustomerStatus, CustomerPackage, ThemeColor, BgTheme } from '../types';
+import { Profile, AppSettings, Customer, CustomerStatus, CustomerPackage, ThemeColor, BgTheme, CareerTrackInfo, CAREER_TRACKS } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { AppIcon, PRESET_ICONS, PRESET_EMOJIS } from './AppIcon';
 import { FooterContact } from './FooterContact';
@@ -42,6 +42,7 @@ import {
   Megaphone,
   Sliders,
   Award,
+  Briefcase,
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -141,7 +142,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onOpenAuth,
 }) => {
   // Tab quản lý: 'interface' (Sửa giao diện) | 'accounts' (Quản lý tài khoản) | 'customers' (Quản lý khách hàng) | 'ai_tools' (Công cụ AI)
-  const [activeTab, setActiveTab] = useState<'interface' | 'accounts' | 'customers' | 'ai_tools'>('interface');
+  const [activeTab, setActiveTab] = useState<'interface' | 'tracks' | 'accounts' | 'customers' | 'ai_tools'>('interface');
 
   // Toast thông báo
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -180,6 +181,43 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [contactFacebookInput, setContactFacebookInput] = useState(settings?.contactFacebook || 'https://facebook.com');
   const [contactTiktokInput, setContactTiktokInput] = useState(settings?.contactTiktok || 'https://tiktok.com');
   const [contactTelegramInput, setContactTelegramInput] = useState(settings?.contactTelegram || '');
+
+  const [trackName, setTrackName] = useState('');
+  const [trackId, setTrackId] = useState('');
+  const [trackDescription, setTrackDescription] = useState('');
+  const [trackIcon, setTrackIcon] = useState('Briefcase');
+  const [trackSamplePhrase, setTrackSamplePhrase] = useState('');
+  const [isSavingTracks, setIsSavingTracks] = useState(false);
+  const customCareerTracks = settings?.customCareerTracks || [];
+  const saveCustomCareerTracks = async (nextTracks: CareerTrackInfo[]) => {
+    if (!onSaveSettings) throw new Error('Không thể lưu cài đặt trong phiên này.');
+    if (!isSupabaseConfigured) throw new Error('Chưa kết nối Supabase; chủ đề chưa được lưu.');
+    await onSaveSettings({ ...(settings || {} as AppSettings), customCareerTracks: nextTracks });
+  };
+  const handleAddCareerTrack = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const normalizedId = trackId.trim().toLowerCase();
+    if (!trackName.trim() || !trackDescription.trim() || !normalizedId) { setToast({ type: 'error', text: 'Vui lòng nhập tên, mã và mô tả chủ đề.' }); return; }
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalizedId)) { setToast({ type: 'error', text: 'Mã chủ đề chỉ gồm chữ thường, số và dấu gạch nối.' }); return; }
+    if ([...CAREER_TRACKS, ...customCareerTracks].some((track) => track.id === normalizedId)) { setToast({ type: 'error', text: 'Mã chủ đề đã tồn tại. Hãy chọn mã khác.' }); return; }
+    const newTrack: CareerTrackInfo = { id: normalizedId, name: trackName.trim(), icon: trackIcon, description: trackDescription.trim(), isVipOnly: true, samplePhrase: trackSamplePhrase.trim() || trackName.trim(), badge: 'Dành riêng cho VIP' };
+    setIsSavingTracks(true);
+    try {
+      await saveCustomCareerTracks([...customCareerTracks, newTrack]);
+      setTrackName(''); setTrackId(''); setTrackDescription(''); setTrackSamplePhrase('');
+      setToast({ type: 'success', text: 'Đã lưu chủ đề chuyên sâu vào Supabase.' });
+    } catch (error: any) { setToast({ type: 'error', text: error.message || 'Không thể lưu chủ đề.' }); }
+    finally { setIsSavingTracks(false); }
+  };
+  const handleDeleteCareerTrack = async (id: string) => {
+    setIsSavingTracks(true);
+    try {
+      await saveCustomCareerTracks(customCareerTracks.filter((track) => track.id !== id));
+      setToast({ type: 'success', text: 'Đã xóa chủ đề.' });
+    } catch (error: any) { setToast({ type: 'error', text: error.message || 'Không thể xóa chủ đề.' }); }
+    finally { setIsSavingTracks(false); }
+  };
+
 
   const [isSavingInterface, setIsSavingInterface] = useState(false);
 
@@ -293,6 +331,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
     setIsSavingInterface(true);
     const newSettings: AppSettings = {
+      ...(settings || {} as AppSettings),
       appName: appNameInput.trim(),
       appSubtitle: appSubtitleInput.trim(),
       appIcon: selectedIcon,
@@ -751,6 +790,10 @@ export const AdminView: React.FC<AdminViewProps> = ({
         >
           <Palette className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
           <span>1. Sửa Giao Diện Trang</span>
+        </button>
+
+        <button onClick={() => setActiveTab('tracks')} className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${activeTab === 'tracks' ? 'bg-white dark:bg-slate-900 text-cyan-700 dark:text-cyan-400 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-700/50'}`}>
+          <Briefcase className="w-4 h-4 text-cyan-600 dark:text-cyan-400" /><span>Chủ đề chuyên sâu</span>
         </button>
 
         <button
@@ -1231,6 +1274,26 @@ export const AdminView: React.FC<AdminViewProps> = ({
       {/* ============================================================== */}
       {/* ================= TAB 2: QUẢN LÝ TÀI KHOẢN =================== */}
       {/* ============================================================== */}
+      {activeTab === 'tracks' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <section className="rounded-3xl border border-cyan-200 bg-white p-5 sm:p-7 shadow-xs dark:border-cyan-900 dark:bg-slate-900">
+            <div className="mb-5"><h2 className="text-xl font-black text-slate-900 dark:text-white">Thêm chủ đề ngành chuyên sâu</h2><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Chủ đề sẽ xuất hiện trong bộ chọn luyện tập và được lưu trên Supabase. Chủ đề mới mặc định dành cho VIP.</p></div>
+            <form onSubmit={handleAddCareerTrack} className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-1 text-sm font-semibold">Tên chủ đề<input required value={trackName} onChange={(e)=>{const n=e.target.value;setTrackName(n);setTrackId(n.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/đ/g,'d').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''));}} placeholder="Ví dụ: Tiếng Anh Y tế" className="mt-1 w-full rounded-xl border px-3 py-2.5" /></label>
+              <label className="space-y-1 text-sm font-semibold">Mã chủ đề<input required value={trackId} onChange={(e)=>setTrackId(e.target.value)} placeholder="tieng-anh-y-te" className="mt-1 w-full rounded-xl border px-3 py-2.5" /></label>
+              <label className="space-y-1 text-sm font-semibold">Mô tả<input required value={trackDescription} onChange={(e)=>setTrackDescription(e.target.value)} placeholder="Các tình huống giao tiếp trong ngành..." className="mt-1 w-full rounded-xl border px-3 py-2.5" /></label>
+              <label className="space-y-1 text-sm font-semibold">Cụm từ minh họa (không bắt buộc)<input value={trackSamplePhrase} onChange={(e)=>setTrackSamplePhrase(e.target.value)} placeholder="Patient care, diagnosis, appointment" className="mt-1 w-full rounded-xl border px-3 py-2.5" /></label>
+              <label className="space-y-1 text-sm font-semibold">Biểu tượng<select value={trackIcon} onChange={(e)=>setTrackIcon(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option value="Briefcase">Công việc</option><option value="MessageSquare">Giao tiếp</option><option value="Code2">Công nghệ</option><option value="Hotel">Dịch vụ</option></select></label>
+              <div className="flex items-end"><button disabled={isSavingTracks} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-5 py-3 font-bold text-white disabled:opacity-50"><Plus className="h-4 w-4" />{isSavingTracks ? 'Đang lưu...' : 'Thêm chủ đề'}</button></div>
+            </form>
+          </section>
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-7 dark:border-slate-800 dark:bg-slate-900">
+            <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Chủ đề tùy chỉnh ({customCareerTracks.length})</h3>
+            {customCareerTracks.length===0 ? <p className="text-sm text-slate-500">Chưa có chủ đề tùy chỉnh.</p> : <ul className="divide-y">{customCareerTracks.map((track)=><li key={track.id} className="flex items-center justify-between gap-4 py-3"><div><p className="font-bold">{track.name}</p><p className="text-sm text-slate-500">{track.description} · Mã: {track.id}</p></div><button type="button" disabled={isSavingTracks} onClick={()=>void handleDeleteCareerTrack(track.id)} className="rounded-lg p-2 text-rose-600 disabled:opacity-50" aria-label={`Xóa ${track.name}`}><Trash2 className="h-4 w-4" /></button></li>)}</ul>}
+          </section>
+        </div>
+      )}
+
       {activeTab === 'accounts' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* THẺ THỐNG KÊ TÀI KHOẢN */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Profile, Question, AppSettings } from './types';
+import { Profile, Question, AppSettings, CareerTrackInfo } from './types';
 import { INITIAL_QUESTIONS } from './data/initialQuestions';
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient';
 import { getDailyQuestions, shuffleQuestions } from './lib/questionRotation';
@@ -488,50 +488,22 @@ export default function App() {
 
   // 7. Cập nhật và lưu cài đặt Tên, Biểu tượng & Kênh liên hệ từ trang Quản trị
   const handleSaveSettings = async (newSettings: AppSettings) => {
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.from('app_settings').upsert({ id: 'default', value: newSettings, updated_at: new Date().toISOString() });
+      if (error) throw error;
+    } else if (newSettings.customCareerTracks) {
+      throw new Error('Chưa kết nối Supabase; chủ đề chưa được lưu.');
+    }
     setSettings(newSettings);
     try {
       localStorage.setItem('app_custom_settings', JSON.stringify(newSettings));
-      localStorage.setItem(
-        'app_contact_settings',
-        JSON.stringify({
-          contactEmail: newSettings.contactEmail,
-          contactFacebook: newSettings.contactFacebook,
-          contactTiktok: newSettings.contactTiktok,
-        })
-      );
+      localStorage.setItem('app_contact_settings', JSON.stringify({ contactEmail: newSettings.contactEmail, contactFacebook: newSettings.contactFacebook, contactTiktok: newSettings.contactTiktok }));
     } catch (e) {}
-
-    // 1. Lưu trực tiếp vào Supabase cloud database nếu có kết nối
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('app_settings').upsert({
-          id: 'default',
-          value: newSettings,
-          updated_at: new Date().toISOString(),
-        });
-      } catch (dbErr) {
-        console.warn('Lỗi đồng bộ app_settings lên Supabase:', dbErr);
-      }
-    }
-
-    // 2. Lưu lên API máy chủ backend
     try {
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings),
-      });
-      if (!res.ok) {
-        throw new Error('Lỗi từ máy chủ khi lưu cài đặt.');
-      }
-    } catch (err: any) {
-      console.warn('Lưu lên máy chủ gặp trục trặc, dữ liệu vẫn được lưu tại trình duyệt & Supabase:', err);
-    }
-
-    setToastMessage({
-      type: 'success',
-      text: `Đã lưu cài đặt và cố định kênh liên hệ thành công!`,
-    });
+      const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) });
+      if (!res.ok) throw new Error('Settings API unavailable');
+    } catch (err) { console.warn('Settings API unavailable; Supabase is the persistent source.', err); }
+    setToastMessage({ type: 'success', text: 'Đã lưu cài đặt thành công!' });
     setTimeout(() => setToastMessage(null), 5000);
   };
 
@@ -649,6 +621,7 @@ export default function App() {
             todayDateString={todayDateString}
             onOpenBattle={() => setCurrentView('battle')}
             onOpenDuel={() => setCurrentView('duel')}
+            customTracks={settings.customCareerTracks as CareerTrackInfo[] | undefined}
           />
         ) : currentView === 'duel' ? (
           <DuelBattleView

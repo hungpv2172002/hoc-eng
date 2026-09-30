@@ -8,7 +8,7 @@ export interface Profile {
   created_at: string;
 }
 
-export type CareerCategory = 'general' | 'it' | 'business' | 'hospitality';
+export type CareerCategory = string;
 
 export interface CareerTrackInfo {
   id: CareerCategory;
@@ -171,6 +171,7 @@ export interface AppSettings {
   contactFacebook?: string;
   contactTiktok?: string;
   contactTelegram?: string;
+  customCareerTracks?: CareerTrackInfo[];
 }
 
 // Khách hàng & CRM quản lý bán gói
