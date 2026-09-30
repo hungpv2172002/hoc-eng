@@ -369,7 +369,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
   ) || CAREER_TRACKS[0];
 
   return (
-    <div className="max-w-3xl w-full mx-auto space-y-4 sm:space-y-6 overflow-x-hidden">
+    <div className="w-full mx-auto space-y-4 sm:space-y-6 overflow-x-clip">
       {/* 0. THANH LỰA CHỌN CHỦ ĐỀ NGÀNH NGHỀ DÀNH CHO VIP */}
       <CareerTrackSelector
         selectedCategory={selectedCategory}

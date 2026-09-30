@@ -388,7 +388,7 @@ export const TowerBattleView: React.FC<TowerBattleViewProps> = ({
   const wordCount = userSentence.trim() ? userSentence.trim().split(/\s+/).length : 0;
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-3 sm:space-y-4 animate-in fade-in duration-200 pb-16 px-1 sm:px-0 overflow-x-hidden">
+    <div className="w-full mx-auto space-y-3 sm:space-y-4 animate-in fade-in duration-200 pb-16 px-1 sm:px-0 overflow-x-clip">
       {/* 1. TOP NAV BAR CHO MINI GAME (Gọn gàng trên Mobile) */}
       <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl p-2.5 sm:p-4 border border-slate-200/90 dark:border-slate-800 shadow-2xs flex items-center justify-between gap-1.5 sm:gap-2 w-full min-w-0 transition-colors">
         {/* Nút Về phòng học */}
