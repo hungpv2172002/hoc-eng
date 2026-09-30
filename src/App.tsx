@@ -427,6 +427,7 @@ export default function App() {
           ? categoryInput.trim().toLowerCase()
           : undefined;
 
+      const customTrack = settings.customCareerTracks?.find((track) => track.id === validCategory);
       const catParam = validCategory ? `&category=${encodeURIComponent(validCategory)}` : '';
       const res = await fetch(`/api/cron/generate?key=my_super_secret_cron_token_12345${catParam}`, {
         method: 'POST',
@@ -434,7 +435,7 @@ export default function App() {
           'Content-Type': 'application/json',
           Authorization: 'Bearer my_super_secret_cron_token_12345',
         },
-        body: JSON.stringify({ category: validCategory }),
+        body: JSON.stringify({ category: validCategory, categoryName: customTrack?.name }),
       });
 
       const json = await res.json();
@@ -454,6 +455,8 @@ export default function App() {
           ? 'chuyên ngành Kinh Doanh & Sales'
           : validCategory === 'hospitality'
           ? 'chuyên ngành Khách Sạn & Du Lịch'
+          : customTrack?.name
+          ? `chuyên ngành ${customTrack.name}`
           : 'giao tiếp chung';
 
       setToastMessage({

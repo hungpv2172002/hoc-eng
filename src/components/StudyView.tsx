@@ -233,7 +233,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         (q) => (q.category || 'general') === selectedCategory
       );
     }
-    if (pool.length === 0) {
+    if (pool.length === 0 && CAREER_TRACKS.some((track) => track.id === selectedCategory)) {
       pool = allAvailableQuestions;
     }
 
@@ -247,7 +247,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         const globalLevelMatches = allAvailableQuestions.filter(
           (q) => getQuestionLevel(q) === selectedLevel
         );
-        if (globalLevelMatches.length > 0) {
+        if (globalLevelMatches.length > 0 && CAREER_TRACKS.some((track) => track.id === selectedCategory)) {
           pool = globalLevelMatches;
         }
       }
@@ -540,7 +540,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
       ) : !currentQuestion ? (
         <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 w-full min-w-0">
           <RefreshCw className="w-8 h-8 text-indigo-600 dark:text-indigo-400 animate-spin mx-auto mb-3" />
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Đang tải danh sách câu hỏi...</p>
+          <p className="text-slate-500 dark:text-slate-400 font-medium">Chủ đề này chưa có câu hỏi. Quản trị viên có thể tạo câu hỏi trong phần Cài đặt admin.</p>
         </div>
       ) : (
         /* 2. GIAO DIỆN HỌC BÀI */

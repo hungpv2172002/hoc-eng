@@ -382,12 +382,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
         type: 'success',
         text: `Đã lưu giao diện thành công! Tên ứng dụng: "${newSettings.appName}".`,
       });
-    } catch (err: any) {
-      setToast({
-        type: 'success',
-        text: 'Đã lưu cài đặt giao diện vào bộ nhớ trình duyệt!',
-      });
-    } finally {
+    } catch (err: any) { setToast({ type: 'error', text: err.message || 'Không thể lưu cài đặt giao diện.' }); } finally {
       setIsSavingInterface(false);
       setTimeout(() => setToast(null), 5000);
     }
@@ -1289,7 +1284,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
           </section>
           <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-7 dark:border-slate-800 dark:bg-slate-900">
             <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Chủ đề tùy chỉnh ({customCareerTracks.length})</h3>
-            {customCareerTracks.length===0 ? <p className="text-sm text-slate-500">Chưa có chủ đề tùy chỉnh.</p> : <ul className="divide-y">{customCareerTracks.map((track)=><li key={track.id} className="flex items-center justify-between gap-4 py-3"><div><p className="font-bold">{track.name}</p><p className="text-sm text-slate-500">{track.description} · Mã: {track.id}</p></div><button type="button" disabled={isSavingTracks} onClick={()=>void handleDeleteCareerTrack(track.id)} className="rounded-lg p-2 text-rose-600 disabled:opacity-50" aria-label={`Xóa ${track.name}`}><Trash2 className="h-4 w-4" /></button></li>)}</ul>}
+            {customCareerTracks.length===0 ? <p className="text-sm text-slate-500">Chưa có chủ đề tùy chỉnh.</p> : <ul className="divide-y">{customCareerTracks.map((track)=><li key={track.id} className="flex items-center justify-between gap-4 py-3"><div><p className="font-bold">{track.name}</p><p className="text-sm text-slate-500">{track.description} · Mã: {track.id}</p></div><button type="button" disabled={isGeneratingAi} onClick={() => onAiGenerateQuestions(track.id)} className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-3 py-2 text-sm font-bold text-indigo-700 disabled:opacity-50 dark:bg-indigo-950/50 dark:text-indigo-300"><Sparkles className="h-4 w-4" />Tạo câu hỏi</button><button type="button" disabled={isSavingTracks} onClick={()=>void handleDeleteCareerTrack(track.id)} className="rounded-lg p-2 text-rose-600 disabled:opacity-50" aria-label={`Xóa ${track.name}`}><Trash2 className="h-4 w-4" /></button></li>)}</ul>}
           </section>
         </div>
       )}
