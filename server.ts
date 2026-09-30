@@ -234,7 +234,7 @@ app.all(['/api/cron/generate', '/cron/generate'], async (req, res) => {
 
     const requestedCategory =
       ((req.query.category || req.body?.category) as string | undefined)?.toLowerCase() || 'general';
-    const customCategoryName = typeof req.body?.categoryName === 'string' ? req.body.categoryName.replace(/[\\u0000-\\u001f]/g, '').trim().slice(0, 80) : '';
+    const customCategoryName = typeof req.body?.categoryName === 'string' ? req.body.categoryName.replace(/[\x00-\x1f]/g, '').trim().slice(0, 80) : '';
 
     let industryInstruction = 'giao tiếp đời thường và xã hội thực tế';
     if (requestedCategory === 'it') {
