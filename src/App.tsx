@@ -179,44 +179,8 @@ export default function App() {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {}
-    return [
-      {
-        id: 'admin-hung',
-        email: 'hungpv2172002@gmail.com',
-        full_name: 'Phùng Việt Hùng',
-        avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=HungPV',
-        role: 'admin',
-        is_vip: true,
-        created_at: '2026-03-01T08:00:00Z',
-      },
-      {
-        id: 'user-nam',
-        email: 'nam.nguyen@gmail.com',
-        full_name: 'Nguyễn Văn Nam',
-        avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=NamNguyen',
-        role: 'user',
-        is_vip: false,
-        created_at: '2026-03-10T10:30:00Z',
-      },
-      {
-        id: 'user-hoa',
-        email: 'hoa.tran@gmail.com',
-        full_name: 'Trần Thị Hoa',
-        avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=HoaTran',
-        role: 'user',
-        is_vip: true,
-        created_at: '2026-03-12T14:15:00Z',
-      },
-      {
-        id: 'user-linh',
-        email: 'linh.le@gmail.com',
-        full_name: 'Lê Thùy Linh',
-        avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=LinhLe',
-        role: 'user',
-        is_vip: false,
-        created_at: '2026-03-14T09:00:00Z',
-      },
-    ];
+    return [];
+
   });
 
   // 1. Tải tiến độ học hôm nay từ localStorage
@@ -316,42 +280,39 @@ export default function App() {
         if (session?.user) {
           const cleanEmail = session.user.email?.toLowerCase() || '';
           const isAdmin = cleanEmail === 'hungpv2172002@gmail.com';
-          const { data: pData } = await supabase
+          const { data: pData, error: profileError } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', session.user.id)
             .single();
 
-          if (pData) {
-            const merged: Profile = {
-              ...(pData as Profile),
-              role: isAdmin ? 'admin' : (pData.role || 'user'),
-              is_vip: isAdmin ? true : (pData.is_vip ?? false),
-            };
-            setProfile(merged);
-            localStorage.setItem('translation_user_profile', JSON.stringify(merged));
-          } else {
-            const merged: Profile = {
-              id: session.user.id,
-              email: cleanEmail,
-              full_name: session.user.user_metadata?.full_name || cleanEmail.split('@')[0],
-              avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}`,
-              role: isAdmin ? 'admin' : 'user',
-              is_vip: isAdmin,
-              created_at: new Date().toISOString(),
-            };
-            setProfile(merged);
-            localStorage.setItem('translation_user_profile', JSON.stringify(merged));
+          if (profileError) throw profileError;
+          if (!pData) throw new Error('Không đọc được hồ sơ đã lưu. Vui lòng thử lại, không đăng ký lại tài khoản.');
+          const storedProfile = pData as Profile;
+          setProfile(storedProfile);
+          localStorage.setItem('translation_user_profile', JSON.stringify(storedProfile));
+          const { data: accounts, error: accountsError } = await supabase.from('profiles').select('*');
+          if (accountsError) throw accountsError;
+          setAllProfiles(accounts || []);
+          const legacyAccounts = localStorage.getItem('app_managed_accounts');
+          if (legacyAccounts && !localStorage.getItem('app_managed_accounts_legacy_backup')) {
+            localStorage.setItem('app_managed_accounts_legacy_backup', legacyAccounts);
           }
+          localStorage.setItem('app_managed_accounts', JSON.stringify(accounts || []));
         }
       } catch (err) {
         console.warn('Supabase session load error:', err);
+        setToastMessage({ type: 'error', text: 'Không tải được tài khoản từ database. Dữ liệu cũ không bị ghi đè; vui lòng kiểm tra kết nối Supabase.' });
       }
     }
   }, []);
 
   useEffect(() => {
     initUserSession();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') setTimeout(() => initUserSession(), 0);
+    });
+    return () => subscription.unsubscribe();
   }, [initUserSession]);
 
   // 3. Tải câu hỏi từ API server hoặc Supabase (tự động đảo theo ngày)
@@ -434,13 +395,14 @@ export default function App() {
 
   // 5. Nút Toggle VIP trong Admin
   const handleToggleVip = async (targetUser: Profile) => {
+    if (!isSupabaseConfigured) throw new Error('Chưa kết nối database. Không thể lưu thay đổi tài khoản.');
     const newVip = !targetUser.is_vip;
 
     if (isSupabaseConfigured) {
       const { error } = await supabase
         .from('profiles')
         .update({ is_vip: newVip })
-        .eq('id', targetUser.id);
+        .eq('id', targetUser.id).select('id').single();
       if (error) throw error;
     }
 
@@ -773,10 +735,6 @@ export default function App() {
         initialMode={authModalMode}
         onClose={() => setIsAuthOpen(false)}
         onLoginSuccess={(newProfile) => {
-          if (newProfile.email?.toLowerCase() === 'hungpv2172002@gmail.com') {
-            newProfile.role = 'admin';
-            newProfile.is_vip = true;
-          }
           setProfile(newProfile);
           localStorage.setItem('translation_user_profile', JSON.stringify(newProfile));
           // Tự động thêm hoặc cập nhật trong allProfiles
