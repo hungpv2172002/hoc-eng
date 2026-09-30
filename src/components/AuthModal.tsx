@@ -174,6 +174,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     targetPasswordHash: string,
     rawPassword?: string
   ): Promise<Profile> => {
+    if (!isSupabaseConfigured) throw new Error('Chưa kết nối database tài khoản. Vui lòng liên hệ quản trị viên trước khi đăng ký.');
     const cleanEmail = targetEmail.trim().toLowerCase();
     const displayName = targetName.trim() || cleanEmail.split('@')[0];
     const isAdmin = cleanEmail === ADMIN_EMAIL;
@@ -192,6 +193,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           },
         });
 
+        if (error) throw error;
+        if (!data?.user) throw new Error('Không thể tạo tài khoản trong database.');
+        if (!data.session) throw new Error('Vui lòng xác nhận email Supabase rồi đăng nhập. Tài khoản chưa được lưu trên trình duyệt.');
         if (!error && data?.user) {
           registeredUser = {
             id: data.user.id,
@@ -204,51 +208,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           };
 
           try {
-            await supabase.from('profiles').upsert(registeredUser);
+            const { data: existing, error: existingError } = await supabase.from('profiles').select('*').eq('id', data.user.id).maybeSingle();
+            if (existingError) throw existingError;
+            if (existing) return existing as Profile;
+            const { error: createError } = await supabase.from('profiles').upsert(registeredUser, { onConflict: 'id', ignoreDuplicates: true });
+            if (createError) throw createError;
+            const { data: stored, error: readError } = await supabase.from('profiles').select('*').eq('id', data.user.id).single();
+            if (readError) throw readError;
+            registeredUser = stored as Profile;
           } catch (pErr) {
-            console.warn('Lỗi ghi profile Supabase:', pErr);
+            throw pErr;
           }
         }
       } catch (supaErr) {
-        console.warn('Supabase sign up warning:', supaErr);
+        throw supaErr;
       }
     }
 
-    // 2. Lưu tài khoản an toàn vào bộ nhớ hệ thống (ĐÃ MÃ HÓA MẬT KHẨU HOÀN TOÀN BẰNG PBKDF2)
-    const localUsersJson = localStorage.getItem('app_registered_users');
-    const localUsers: any[] = localUsersJson ? JSON.parse(localUsersJson) : [];
-
-    const newUserData = {
-      id: registeredUser?.id || 'usr-' + Date.now(),
-      email: cleanEmail,
-      passwordHash: targetPasswordHash,
-      full_name: displayName,
-      avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanEmail}`,
-      role: isAdmin ? 'admin' : 'user',
-      is_vip: isAdmin,
-      created_at: new Date().toISOString(),
-      verified_at: new Date().toISOString(),
-    };
-
-    const existingIdx = localUsers.findIndex((u) => u.email === cleanEmail);
-    if (existingIdx >= 0) {
-      localUsers[existingIdx] = newUserData;
-    } else {
-      localUsers.push(newUserData);
-    }
-    localStorage.setItem('app_registered_users', JSON.stringify(localUsers));
-
-    if (!registeredUser) {
-      registeredUser = {
-        id: newUserData.id,
-        email: newUserData.email,
-        full_name: newUserData.full_name,
-        avatar_url: newUserData.avatar_url,
-        role: newUserData.role as 'admin' | 'user',
-        is_vip: newUserData.is_vip,
-        created_at: newUserData.created_at,
-      };
-    }
+    if (!registeredUser) throw new Error('Tài khoản chưa được lưu trên database.');
 
     return registeredUser;
   };
@@ -407,7 +384,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         }),
       });
 
-      if (!verifyRes.ok && verifyRes.data?.error) {
+      if (!verifyRes.ok || !verifyRes.data?.success) {
         setErrorMsg(
           verifyRes.data.error || 'Mã xác thực không chính xác. Vui lòng kiểm tra lại hòm thư email của bạn.'
         );
@@ -540,6 +517,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }
 
       // Mã hóa mật khẩu mới và cập nhật trong localStorage
+      if (isSupabaseConfigured) {
+        setSuccessMsg('Đã gửi yêu cầu đặt lại mật khẩu. Vui lòng đăng nhập lại bằng tài khoản Supabase.');
+        setMode('login');
+        setPassword('');
+        return;
+      }
       const newHash = await hashPassword(cleanNewPass);
       const localUsersJson = localStorage.getItem('app_registered_users');
       const localUsers: any[] = localUsersJson ? JSON.parse(localUsersJson) : [];
@@ -626,25 +609,29 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             password: cleanPass,
           });
 
+          if (error) throw error;
           if (!error && data.user) {
-            const { data: pData } = await supabase
+            const { data: pData, error: profileError } = await supabase
               .from('profiles')
               .select('*')
               .eq('id', data.user.id)
               .single();
 
+            if (profileError) throw profileError;
             if (pData) {
               loggedProfile = {
                 ...(pData as Profile),
-                role: isAdmin ? 'admin' : (pData.role || 'user'),
-                is_vip: isAdmin ? true : (pData.is_vip ?? false),
+                role: pData.role,
+                is_vip: pData.is_vip,
               };
             }
           }
         } catch (supaLoginErr) {
-          console.warn('Supabase signInWithPassword:', supaLoginErr);
+          throw supaLoginErr;
         }
       }
+
+      if (isSupabaseConfigured && !loggedProfile) throw new Error('Không đọc được hồ sơ tài khoản trong database.');
 
       // 2. Xác thực với tài khoản lưu trữ mã hóa
       if (!loggedProfile) {

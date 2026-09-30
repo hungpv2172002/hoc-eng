@@ -122,6 +122,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         avatar_url: avatarUrl,
       };
 
+      if (!isSupabaseConfigured) throw new Error('Chưa kết nối database. Hồ sơ chưa được lưu.');
       if (isSupabaseConfigured) {
         const { error } = await supabase
           .from('profiles')
@@ -129,7 +130,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             full_name: updated.full_name,
             avatar_url: updated.avatar_url,
           })
-          .eq('id', profile.id);
+          .eq('id', profile.id).select('id').single();
 
         if (error) throw error;
       }

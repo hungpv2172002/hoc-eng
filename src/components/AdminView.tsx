@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Profile, AppSettings, Customer, CustomerStatus, CustomerPackage, ThemeColor, BgTheme } from '../types';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { AppIcon, PRESET_ICONS, PRESET_EMOJIS } from './AppIcon';
 import { FooterContact } from './FooterContact';
 import {
@@ -210,16 +211,14 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [accountSearch, setAccountSearch] = useState('');
   const [accountRoleFilter, setAccountRoleFilter] = useState<'all' | 'admin' | 'user'>('all');
   const [accountVipFilter, setAccountVipFilter] = useState<'all' | 'vip' | 'normal'>('all');
-  const [accountList, setAccountList] = useState<Profile[]>(() => {
-    try {
-      const saved = localStorage.getItem('app_managed_accounts');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-    return profiles;
-  });
+  const [accountList, setAccountList] = useState<Profile[]>(profiles);
+  useEffect(() => { setAccountList(profiles); }, [profiles]);
+  const saveAccountChanges = async (id: string, changes: Partial<Profile>) => {
+    if (!isSupabaseConfigured) throw new Error('Chưa kết nối Supabase. Thay đổi chưa được lưu.');
+    const { data, error } = await supabase.from('profiles').update(changes).eq('id', id).select('*').single();
+    if (error) throw error;
+    return data as Profile;
+  };
 
   // Modal Thêm / Sửa tài khoản
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
@@ -376,17 +375,12 @@ export const AdminView: React.FC<AdminViewProps> = ({
     }
   };
 
-  const handleToggleRoleClick = (user: Profile) => {
-    const newRole = user.role === 'admin' ? 'user' : 'admin';
-    const updated = accountList.map((p) =>
-      p.id === user.id ? { ...p, role: newRole as 'admin' | 'user' } : p
-    );
-    persistAccounts(updated);
-    setToast({
-      type: 'success',
-      text: `Đã chuyển đổi vai trò của ${user.full_name || user.email} sang ${newRole === 'admin' ? 'Quản trị viên' : 'Học viên'}!`,
-    });
-    setTimeout(() => setToast(null), 4000);
+  const handleToggleRoleClick = async (user: Profile) => {
+    try {
+      const saved = await saveAccountChanges(user.id, { role: user.role === 'admin' ? 'user' : 'admin' });
+      persistAccounts(accountList.map(p => p.id === saved.id ? saved : p));
+      setToast({ type: 'success', text: 'Đã lưu vai trò trong database.' });
+    } catch (err: any) { setToast({ type: 'error', text: err.message || 'Không thể lưu vai trò.' }); }
   };
 
   const handleOpenAccountModal = (account?: Profile) => {
@@ -408,63 +402,23 @@ export const AdminView: React.FC<AdminViewProps> = ({
     setIsAccountModalOpen(true);
   };
 
-  const handleSaveAccountForm = (e: React.FormEvent) => {
+  const handleSaveAccountForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!accountFormEmail.trim()) {
-      setToast({ type: 'error', text: 'Email không được để trống!' });
-      return;
-    }
-
-    if (editingAccount) {
-      // Sửa tài khoản
-      const updated = accountList.map((p) => {
-        if (p.id === editingAccount.id) {
-          return {
-            ...p,
-            full_name: accountFormName.trim() || p.full_name,
-            email: accountFormEmail.trim().toLowerCase(),
-            role: accountFormRole,
-            is_vip: accountFormVip,
-          };
-        }
-        return p;
+    try {
+      if (!editingAccount) throw new Error('Vui lòng tạo tài khoản bằng chức năng Đăng ký hoặc Supabase Authentication. Không tạo tài khoản chỉ lưu trên trình duyệt.');
+      if (accountFormEmail.trim().toLowerCase() !== editingAccount.email.toLowerCase()) throw new Error('Đổi email đăng nhập trong Supabase Authentication để giữ đồng bộ tài khoản.');
+      const saved = await saveAccountChanges(editingAccount.id, {
+        full_name: accountFormName.trim() || editingAccount.full_name,
+        role: accountFormRole, is_vip: accountFormVip,
       });
-      persistAccounts(updated);
-      setToast({ type: 'success', text: `Đã cập nhật thông tin tài khoản ${accountFormEmail}!` });
-    } else {
-      // Tạo tài khoản mới
-      const newAcc: Profile = {
-        id: `user-${Date.now().toString(36)}`,
-        email: accountFormEmail.trim().toLowerCase(),
-        full_name: accountFormName.trim() || accountFormEmail.split('@')[0],
-        avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${accountFormEmail.trim()}`,
-        role: accountFormRole,
-        is_vip: accountFormVip,
-        created_at: new Date().toISOString(),
-      };
-      persistAccounts([newAcc, ...accountList]);
-      setToast({ type: 'success', text: `Đã tạo tài khoản mới: ${newAcc.email}!` });
-    }
-
-    setIsAccountModalOpen(false);
-    setTimeout(() => setToast(null), 4000);
+      persistAccounts(accountList.map(p => p.id === saved.id ? saved : p));
+      setToast({ type: 'success', text: 'Đã lưu tài khoản trong database.' });
+      setIsAccountModalOpen(false);
+    } catch (err: any) { setToast({ type: 'error', text: err.message || 'Không thể lưu tài khoản.' }); }
   };
-
-  const handleDeleteAccount = (id: string) => {
-    const target = accountList.find((p) => p.id === id);
-    if (!target) return;
-    if (target.email === 'hungpv2172002@gmail.com') {
-      setToast({ type: 'error', text: 'Không thể xóa tài khoản Quản trị viên tối cao!' });
-      setAccountDeletingId(null);
-      setTimeout(() => setToast(null), 4000);
-      return;
-    }
-
-    const remaining = accountList.filter((p) => p.id !== id);
-    persistAccounts(remaining);
+  const handleDeleteAccount = (_id: string) => {
     setAccountDeletingId(null);
-    setToast({ type: 'success', text: `Đã xóa tài khoản ${target.full_name || target.email} khỏi hệ thống.` });
-    setTimeout(() => setToast(null), 4000);
+    setToast({ type: 'error', text: 'Để xóa tài khoản thật, hãy dùng Supabase Authentication. Danh sách trên trình duyệt không phải database.' });
   };
 
   const handleExportAccountsJson = () => {
