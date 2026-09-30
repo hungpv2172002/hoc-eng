@@ -252,10 +252,15 @@ export interface DuelQuestionItem {
   hints: string;
   level?: string;
   category?: string;
-  answers: string[]; // Chứa đáp án chuẩn
+  answers?: string[]; // Present only on the legacy server; online snapshots omit answers.
+  wordBank?: string[];
 }
 
 export interface DuelRoomState {
+  matchId?: string;
+  startsAt?: number;
+  deadlineAt?: number;
+  finishReason?: string;
   roomId: string;
   status: 'waiting' | 'countdown' | 'in_progress' | 'finished';
   category: string;
@@ -309,4 +314,5 @@ export interface UserStats {
   friendsCount: number;
   unlockedBadgeIds: string[];
 }
+
 

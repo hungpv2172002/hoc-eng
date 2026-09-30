@@ -628,6 +628,7 @@ export default function App() {
           />
         ) : currentView === 'duel' ? (
           <DuelBattleView
+            onOpenAuth={() => setIsAuthOpen(true)}
             profile={profile}
             onBackToStudy={() => setCurrentView('study')}
             initialRoomId={initialDuelRoomId}
@@ -762,3 +763,4 @@ export default function App() {
     </div>
   );
 }
+
