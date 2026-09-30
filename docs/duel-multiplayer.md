@@ -1,42 +1,36 @@
-# Đấu 1vs1 trực tuyến
+# Đấu 1vs1 trên Vercel
 
-## Cách dùng
+## Cách chơi
 
-- Cả hai người mở mục Đấu Trường 1vs1 trên website.
-- Ghép ngẫu nhiên: cả hai bấm Tìm trận. Người vào hàng chờ trước quyết định số câu và chủ đề. Hai người nhận cùng bộ câu hỏi.
-- Đấu bạn bè: thêm email bạn, bấm Thách đấu. Người nhận đang ở sảnh sẽ thấy lời mời trong 60 giây, có thể chấp nhận hoặc từ chối. Nếu bạn chưa vào sảnh, gửi link/mã phòng.
-- Tab Bạn học chỉ hiển thị kết nối đang ở sảnh, không lấy danh sách tài khoản làm trạng thái online.
-- Phòng riêng: khách bấm Sẵn sàng, chủ phòng bắt đầu. Một phòng tối đa hai người.
-- Rời hoặc mất kết nối trong trận: người còn lại thắng; mất kết nối đưa người chơi về sảnh với nút kết nối lại. Không khôi phục trận đang chơi.
-- Tài khoản chỉ mở một kết nối đấu trường tại một thời điểm. Bạn bè vẫn được lưu trên thiết bị theo cơ chế hiện tại của ứng dụng.
+Hai người mở mục 1vs1, cùng bấm Tìm trận để được ghép với nhau. Cấu hình của người chờ trước được dùng cho trận. Có thể hủy hàng chờ.
 
-## Chạy và triển khai
+Tab Bạn học hiển thị người đang ở sảnh. Bấm Thách đấu để gửi lời mời 60 giây. Người nhận chọn Chấp nhận/Từ chối. Với bạn bè đã đăng nhập Supabase, có thể mời theo email đã xác thực; khách hoặc người chưa mở sảnh dùng mã/link phòng. Bạn bè vẫn được lưu trên thiết bị như ứng dụng hiện tại.
 
-Duel hiện dùng bộ nhớ của **một tiến trình Node chạy liên tục**. Tất cả người chơi phải dùng cùng endpoint và cùng tiến trình này; không chạy nhiều replica hoặc các function độc lập cho matchmaking. Restart tiến trình làm mất phòng đang chơi.
+Phòng riêng cần hai người: khách bật Sẵn sàng và chủ phòng bấm bắt đầu. Cả hai làm cùng bộ câu hỏi. Đáp án đúng được 100 điểm, người trả lời đúng đầu tiên mỗi câu thêm 50 điểm. Có bỏ qua, tái đấu và biểu cảm.
 
-```sh
-npm ci
-npm run build
-NODE_ENV=production npm start
-```
+## Kiến trúc triển khai
 
-Cấu hình các biến môi trường trong `.env.example` theo dịch vụ đang dùng. `PORT` mặc định 3000. Reverse proxy phải chuyển tiếp WebSocket Upgrade cho `/ws/duel`; website HTTPS cần endpoint `wss://`.
+Mặc định giao diện dùng HTTPS `/api/duel/sync`, đồng bộ khoảng 1,2 giây, không cần máy chủ WebSocket riêng. Mỗi request đọc trạng thái chung trong Supabase và ghi bằng compare-and-swap theo phiên bản; nếu request khác đã ghi trước, server đọc lại và thực hiện lại thao tác. Vì vậy các Vercel Function instance độc lập vẫn dùng một hàng chờ/phòng. Request có ID để tránh ghi điểm lặp khi gửi lại.
 
-Nếu frontend vẫn được triển khai bằng cấu hình `vercel.json` hiện tại, thiết lập biến **build-time** `VITE_DUEL_WS_URL=wss://<duel-host>/ws/duel` trỏ tới tiến trình Node nói trên và build/deploy lại frontend. Cấu hình hiện tại rewrite `/ws/duel` về HTML, không nối endpoint này với `httpServer`; chỉ merge mã không tự tạo backend đấu hoặc đổi biến môi trường trên hosting.
+Migration: `supabase/migrations/20260930141521_durable_duels.sql` tạo bảng riêng `duel_state_store` và hàm `duel_compare_and_swap`. RLS bật, quyền đọc/ghi/execute bị thu hồi khỏi anon/authenticated. Chỉ API phía server dùng service_role. Không thay đổi bảng tài khoản/câu hỏi hiện hữu.
 
-Không có thông tin hosting/credentials của máy chủ đấu trong repo, nên cần cấu hình endpoint production trước khi xác nhận đã hoạt động trên website thật.
+Biến môi trường Vercel cần có (đã dùng bởi API hiện tại):
+- `NEXT_PUBLIC_SUPABASE_URL` hoặc `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY` (chỉ phía server)
+- Các biến frontend Supabase hiện có để xác thực tài khoản.
 
-Danh tính ở giao thức đấu hiện kế thừa profile do client gửi (bao gồm chế độ khách), chưa phải danh tính được máy chủ xác thực. Không dùng kết quả trận này cho phần thưởng có giá trị hoặc bảng xếp hạng tin cậy trước khi nối xác thực tài khoản phía server. Đáp án có trong dữ liệu câu hỏi của giao diện luyện tập hiện tại.
+Để trống `VITE_DUEL_WS_URL` cho Vercel. Nếu đặt biến này, giao diện dùng lại đường WebSocket riêng, tách biệt với phòng HTTP.
+
+Phiên khách dùng token ngẫu nhiên 256 bit trên trình duyệt; server chỉ lưu hash. Tài khoản đăng nhập được xác thực qua Supabase Auth khi vào sảnh; ID/email do client khai báo không được dùng làm danh tính đã xác thực. Dữ liệu trả về không chứa khóa phiên hoặc email của người trong sảnh.
+
+Giữ phiên qua kết nối lại bằng sessionStorage. Ngừng đồng bộ quá 60 giây: người chơi rời phòng, đối thủ thắng nếu trận đang chạy. Trạng thái được dọn khi có request tiếp theo, không phụ thuộc timer nền của Vercel. Phiên đang ở phòng sẽ được khôi phục khi kết nối lại trước hạn này.
+
+Thiết kế dùng một bản ghi chung cho sảnh nhỏ, giới hạn 200 phiên đang hoạt động. Chưa kiểm thử tải lớn; khi mở rộng cần tách hàng chờ/phòng thành bản ghi riêng. Đáp án vẫn có trong dữ liệu luyện tập gửi xuống trình duyệt như ứng dụng gốc; không dùng làm thi đấu có giải thưởng.
 
 ## Kiểm thử
 
-```sh
-npm run lint
-npm run build
-# Terminal 1; test key only avoids AI initialization failure; tests do not call AI.
-NODE_ENV=production GEMINI_API_KEY=test-only PORT=3100 npm start
-# Terminal 2
-node tests/duel.integration.mjs
-```
-
-Kiểm thử dùng các WebSocket client độc lập: presence, ghép trận, cả hai gửi đáp án, từ chối đáp án lặp, hủy hàng chờ, mã phòng sai, lời mời bằng email và ID, từ chối/chấp nhận, phòng đầy, sẵn sàng và mất kết nối.
+- `npm run lint`
+- `npm run build`
+- `node --import tsx tests/durable-duel.test.ts`: hai cặp độc lập, đáp án/request lặp, điểm, tái đấu, quyền nhận lời mời, readiness và hết hạn phiên.
+- Kiểm tra SQL CAS và phân quyền trong transaction rollback.
+- `tests/duel.integration.mjs` dành cho đường WebSocket tùy chọn.

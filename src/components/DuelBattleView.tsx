@@ -1,3 +1,4 @@
+import { HttpDuelConnection } from '../lib/httpDuelConnection';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Swords,
@@ -179,7 +180,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   }, [invitation]);
 
   // 2. Trạng thái kết nối WebSocket
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<WebSocket | HttpDuelConnection | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<
     'connecting' | 'connected' | 'disconnected' | 'error'
   >('connecting');
@@ -247,7 +248,9 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
       setConnectionStatus('connecting');
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = (import.meta as any).env.VITE_DUEL_WS_URL || `${protocol}//${window.location.host}/ws/duel`;
-      const ws = new WebSocket(wsUrl);
+      const ws = (import.meta as any).env.VITE_DUEL_WS_URL
+        ? new WebSocket(wsUrl)
+        : new HttpDuelConnection(playerId);
 
       ws.onopen = () => {
         setConnectionStatus('connected');
@@ -550,6 +553,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
     playPlayerHurtSound();
     sendWs({
       type: 'skip_question',
+      questionIndex: currentQIndex,
     });
     setAssembledTokens([]);
     setUserSentence('');

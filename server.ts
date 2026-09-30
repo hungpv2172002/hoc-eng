@@ -1,4 +1,5 @@
 import express from 'express';
+import { installDurableDuel } from './server/durableDuel';
 import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
@@ -54,6 +55,8 @@ const supabaseAdmin = hasSupabaseAdmin
       auth: { autoRefreshToken: false, persistSession: false },
     })
   : null;
+
+installDurableDuel(app, supabaseAdmin, () => memoryQuestionsStore);
 
 // Bộ nhớ câu hỏi đệm (In-memory questions store)
 // Đảm bảo học viên luôn học được câu mới ngay lập tức kể cả khi Supabase đang bị lỗi phân quyền
