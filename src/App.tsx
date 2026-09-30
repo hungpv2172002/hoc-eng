@@ -1,3 +1,5 @@
+import { LearningChoice, LearningAudience } from './components/LearningChoice';
+import { KidsLearning } from './components/KidsLearning';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Profile, Question, AppSettings, CareerTrackInfo } from './types';
 import { INITIAL_QUESTIONS } from './data/initialQuestions';
@@ -70,6 +72,10 @@ export default function App() {
     getDailyQuestions(INITIAL_QUESTIONS)
   );
   const [todayCount, setTodayCount] = useState<number>(0);
+  const [learningAudience, setLearningAudience] = useState<LearningAudience | null>(null);
+  const [learningUserId, setLearningUserId] = useState<string | null>(null);
+  const chooseLearning = (value: LearningAudience) => { setLearningAudience(value); setLearningUserId(profile?.id || null); };
+  const needsLearningChoice = !learningAudience || (profile?.id || null) !== learningUserId;
 
   // Nhận mã phòng nếu mở qua liên kết thách đấu (?duel=DUEL-xxxx hoặc ?room=DUEL-xxxx)
   const [initialDuelRoomId] = useState<string | null>(() => {
@@ -310,6 +316,7 @@ export default function App() {
   useEffect(() => {
     initUserSession();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') { setProfile(null); setLearningAudience(null); setLearningUserId(null); }
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') setTimeout(() => initUserSession(), 0);
     });
     return () => subscription.unsubscribe();
@@ -477,6 +484,7 @@ export default function App() {
 
 
   const handleSignOut = async () => {
+    setLearningAudience(null); setLearningUserId(null);
     if (isSupabaseConfigured) {
       try {
         await supabase.auth.signOut();
@@ -582,8 +590,8 @@ export default function App() {
         </div>
       )}
 
-      {/* HEADER */}
-      <Header
+      {/* Adult navigation is only mounted after the required choice. */}
+      {!needsLearningChoice && learningAudience === 'adult' && <Header
         profile={profile}
         todayCount={todayCount}
         currentView={currentView}
@@ -602,11 +610,12 @@ export default function App() {
         settings={settings}
         themeMode={themeMode}
         onToggleTheme={handleToggleTheme}
-      />
+      />}
 
       {/* MAIN CONTAINER */}
       <main className="app-container flex-1 px-2.5 sm:px-6 py-3 sm:py-8 min-w-0">
-        {currentView === 'study' ? (
+        {!needsLearningChoice && <div className="mb-4 flex flex-wrap justify-between gap-2"><button onClick={() => setLearningAudience(null)} className="min-h-11 rounded-xl border border-indigo-200 bg-white dark:bg-slate-900 px-4 text-sm font-bold text-indigo-700 dark:text-indigo-300">⇄ Đổi khu vực học</button>{learningAudience === 'kids' && <button onClick={() => profile ? handleSignOut() : setIsAuthOpen(true)} className="min-h-11 rounded-xl border px-4 text-sm font-bold">{profile ? 'Đăng xuất' : 'Đăng nhập'}</button>}</div>}
+        {needsLearningChoice ? <LearningChoice signedIn={!!profile} onChoose={chooseLearning} onSignOut={handleSignOut} /> : learningAudience === 'kids' ? <KidsLearning /> : currentView === 'study' ? (
           <StudyView
             questions={questions}
             profile={profile}
@@ -708,6 +717,7 @@ export default function App() {
         initialMode={authModalMode}
         onClose={() => setIsAuthOpen(false)}
         onLoginSuccess={(newProfile) => {
+          setLearningAudience(null); setLearningUserId(null);
           setProfile(newProfile);
           localStorage.setItem('translation_user_profile', JSON.stringify(newProfile));
           // Tự động thêm hoặc cập nhật trong allProfiles
