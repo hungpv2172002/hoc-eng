@@ -1,4 +1,3 @@
-import { KIDS_WORDS } from './src/lib/kidsLearning';
 import express from 'express';
 import { installDurableDuel } from './server/durableDuel';
 import http from 'http';
@@ -420,24 +419,6 @@ Mỗi câu bài tập gồm:
 
 // Endpoint lấy danh sách câu hỏi phục vụ học viên
 // Hỗ trợ tự động đảo câu theo ngày (daily rotation), mỗi ngày một danh sách câu mới mẻ
-// Resolve a fixed vocabulary to public dictionary pronunciation recordings.
-app.get('/api/kids-audio/:word', async (req, res) => {
-  const word = req.params.word;
-  if (!KIDS_WORDS.some(item => item.word === word)) return res.status(404).end();
-  try {
-    const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`, { signal: AbortSignal.timeout(8000) });
-    if (!response.ok) return res.status(503).end();
-    const entries = await response.json() as any;
-    const candidates = Array.isArray(entries) ? entries.flatMap(entry => Array.isArray(entry.phonetics) ? entry.phonetics : []) : [];
-    const recording = candidates.find(item => {
-      try { const url = new URL(item.audio); return url.protocol === 'https:' && ['api.dictionaryapi.dev', 'upload.wikimedia.org', 'ssl.gstatic.com'].includes(url.hostname); } catch { return false; }
-    });
-    if (!recording) return res.status(404).end();
-    res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
-    return res.redirect(302, recording.audio);
-  } catch { return res.status(503).end(); }
-});
-
 app.get(['/api/questions', '/questions'], async (req, res) => {
   const queryDate = (req.query.date as string) || new Date().toISOString().split('T')[0];
   const mode = (req.query.mode as string) || 'daily'; // 'daily' hoặc 'raw'

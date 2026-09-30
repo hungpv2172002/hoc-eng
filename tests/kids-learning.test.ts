@@ -14,3 +14,10 @@ for (let i = 0; i < 100; i++) {
 }
 assert.equal(JSON.stringify(KIDS_WORDS), original);
 console.log('PASS: 100 randomized rounds; unique questions, four distinct options, exactly one correct answer.');
+const { readFileSync } = await import('node:fs');
+const recordings = JSON.parse(readFileSync(new URL('../src/data/kidsAudio.json', import.meta.url), 'utf8'));
+for (const item of KIDS_WORDS) {
+  assert.ok(recordings[item.word]?.startsWith('data:audio/mpeg;base64,'));
+  assert.ok(Buffer.from(recordings[item.word].split(',')[1], 'base64').length > 1000);
+}
+console.log('PASS: every vocabulary word has a bundled MP3 recording.');

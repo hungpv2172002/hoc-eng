@@ -1,27 +1,3 @@
-// src/lib/kidsLearning.ts
-var KIDS_WORDS = [
-  { word: "cat", meaning: "Con m\xE8o", picture: "\u{1F431}" },
-  { word: "dog", meaning: "Con ch\xF3", picture: "\u{1F436}" },
-  { word: "rabbit", meaning: "Con th\u1ECF", picture: "\u{1F430}" },
-  { word: "lion", meaning: "S\u01B0 t\u1EED", picture: "\u{1F981}" },
-  { word: "elephant", meaning: "Con voi", picture: "\u{1F418}" },
-  { word: "fish", meaning: "Con c\xE1", picture: "\u{1F41F}" },
-  { word: "butterfly", meaning: "Con b\u01B0\u1EDBm", picture: "\u{1F98B}" },
-  { word: "apple", meaning: "Qu\u1EA3 t\xE1o", picture: "\u{1F34E}" },
-  { word: "banana", meaning: "Qu\u1EA3 chu\u1ED1i", picture: "\u{1F34C}" },
-  { word: "grapes", meaning: "Qu\u1EA3 nho", picture: "\u{1F347}" },
-  { word: "carrot", meaning: "C\u1EE7 c\xE0 r\u1ED1t", picture: "\u{1F955}" },
-  { word: "cake", meaning: "B\xE1nh ng\u1ECDt", picture: "\u{1F382}" },
-  { word: "car", meaning: "\xD4 t\xF4", picture: "\u{1F697}" },
-  { word: "bus", meaning: "Xe bu\xFDt", picture: "\u{1F68C}" },
-  { word: "bicycle", meaning: "Xe \u0111\u1EA1p", picture: "\u{1F6B2}" },
-  { word: "airplane", meaning: "M\xE1y bay", picture: "\u2708\uFE0F" },
-  { word: "sun", meaning: "M\u1EB7t tr\u1EDDi", picture: "\u2600\uFE0F" },
-  { word: "moon", meaning: "M\u1EB7t tr\u0103ng", picture: "\u{1F319}" },
-  { word: "rainbow", meaning: "C\u1EA7u v\u1ED3ng", picture: "\u{1F308}" },
-  { word: "flower", meaning: "B\xF4ng hoa", picture: "\u{1F33B}" }
-];
-
 // server.ts
 import express from "express";
 
@@ -1659,29 +1635,6 @@ M\u1ED7i c\xE2u b\xE0i t\u1EADp g\u1ED3m:
     return res.status(500).json({
       error: err.message || "L\u1ED7i server khi sinh c\xE2u h\u1ECFi"
     });
-  }
-});
-app.get("/api/kids-audio/:word", async (req, res) => {
-  const word = req.params.word;
-  if (!KIDS_WORDS.some((item) => item.word === word)) return res.status(404).end();
-  try {
-    const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`, { signal: AbortSignal.timeout(8e3) });
-    if (!response.ok) return res.status(503).end();
-    const entries = await response.json();
-    const candidates = Array.isArray(entries) ? entries.flatMap((entry) => Array.isArray(entry.phonetics) ? entry.phonetics : []) : [];
-    const recording = candidates.find((item) => {
-      try {
-        const url = new URL(item.audio);
-        return url.protocol === "https:" && ["api.dictionaryapi.dev", "upload.wikimedia.org", "ssl.gstatic.com"].includes(url.hostname);
-      } catch {
-        return false;
-      }
-    });
-    if (!recording) return res.status(404).end();
-    res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400");
-    return res.redirect(302, recording.audio);
-  } catch {
-    return res.status(503).end();
   }
 });
 app.get(["/api/questions", "/questions"], async (req, res) => {

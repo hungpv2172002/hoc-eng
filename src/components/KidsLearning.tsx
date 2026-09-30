@@ -1,3 +1,4 @@
+import kidsAudio from '../data/kidsAudio.json';
 import React, { useEffect, useState, useRef } from 'react';
 import { createKidsRound, KidsActivity, KidsWord } from '../lib/kidsLearning';
 
@@ -26,7 +27,7 @@ export function KidsLearning() {
     audioRef.current?.pause();
     if (canSpeak) window.speechSynthesis.cancel();
     setAudioError('');
-    const recording = new Audio(`/api/kids-audio/${encodeURIComponent(word)}`);
+    const recording = new Audio((kidsAudio as Record<string, string>)[word]);
     audioRef.current = recording;
     recording.play().catch(() => { if (audioRef.current === recording) fallbackSpeech(word); });
   }
@@ -64,6 +65,6 @@ export function KidsLearning() {
       <div className="grid grid-cols-2 gap-3">{question.options.map(option=><button key={option.word} disabled={selected !== null} onClick={()=>answer(option)} className={`${tile} ${selected && option.word === question.target.word ? 'border-emerald-500 bg-emerald-50 text-emerald-900' : selected === option.word ? 'border-rose-400 bg-rose-50 text-rose-900' : 'border-slate-200 bg-white'}`}>{option.word}{selected && option.word === question.target.word ? ' ✓' : selected === option.word ? ' ✕' : ''}</button>)}</div>
       {selected && <div aria-live="polite" className="mt-5 rounded-2xl bg-sky-50 p-4"><p className="font-bold">{selected === question.target.word ? 'Chính xác! Giỏi lắm! 🎉' : 'Chưa đúng rồi, mình cùng nhớ nhé 💛'}</p><p className="mt-2">{question.target.picture} <strong>{question.target.word}</strong> nghĩa là {question.target.meaning.toLowerCase()}.</p><div className="mt-4 flex flex-wrap gap-3"><button onClick={next} className="min-h-12 rounded-xl bg-indigo-600 px-5 py-3 font-bold text-white">{index === round.length-1 ? 'Xem kết quả' : 'Câu tiếp theo →'}</button><button onClick={()=>speak(question.target.word)} className="min-h-12 rounded-xl border px-4 font-bold disabled:opacity-50">🔊 Nghe phát âm</button></div></div>}
     </>}
-    <p className="mt-6 text-center text-xs text-slate-500">Nguồn bản ghi phát âm: <a href="https://dictionaryapi.dev/" target="_blank" rel="noreferrer" className="underline">Free Dictionary API</a> · <a href={selected || finished ? `https://en.wiktionary.org/wiki/${question.target.word}` : 'https://en.wiktionary.org/'} target="_blank" rel="noreferrer" className="underline">Xem nguồn từ điển</a></p>
+    <p className="mt-6 text-center text-xs text-slate-500">Giọng đọc tiếng Anh tổng hợp · Bấm nút loa để nghe lại.</p>
   </section>;
 }
