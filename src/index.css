@@ -90,3 +90,72 @@
     width: 80%;
   }
 }
+
+
+/* Mobile: identity/account row followed by spacious navigation tiles. */
+.header-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "brand utilities" "navigation navigation";
+  align-items: center;
+  gap: 12px;
+}
+.header-brand { grid-area: brand; }
+.header-navigation {
+  grid-area: navigation;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 3px 0 6px;
+}
+.header-utilities {
+  grid-area: utilities;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.header-navigation > button {
+  flex: 1 1 80px;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 0;
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 40%),
+    0 4px 0 rgb(49 46 129 / 30%), 0 7px 12px rgb(49 46 129 / 12%);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.header-utilities button { min-height: 44px; min-width: 44px; justify-content: center; }
+.header-brand > button {
+  box-shadow: inset 0 2px 0 rgb(255 255 255 / 35%), 0 4px 0 #3730a3, 0 8px 14px rgb(79 70 229 / 20%);
+}
+.header-navigation > button:active {
+  transform: translateY(3px);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 25%), 0 1px 0 rgb(49 46 129 / 30%);
+}
+.header-layout button:focus-visible { outline: 3px solid #818cf8; outline-offset: 3px; }
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .header-navigation > button:hover { transform: perspective(600px) translateY(-2px) rotateX(5deg); }
+}
+@media (max-width: 479px) {
+  .header-layout { column-gap: 8px; }
+  .header-brand h1 { max-width: 100px; }
+  .header-utilities { gap: 6px; }
+  .header-auth { gap: 6px; }
+  .header-auth button { padding-inline: 8px; }
+  .header-progress { display: none; }
+}
+@media (min-width: 1024px) {
+  .header-layout { grid-template-columns: minmax(0, 1fr) auto; }
+  .header-navigation { justify-content: flex-end; }
+  .header-navigation > button { flex: 0 1 auto; padding-inline: 16px; }
+}
+@media (min-width: 1440px) {
+  .header-layout { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "brand navigation utilities"; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .header-layout *, .header-layout *::before { animation: none !important; transition: none !important; }
+  .header-navigation > button:active { transform: none; }
+}
