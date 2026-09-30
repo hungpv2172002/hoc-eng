@@ -57,8 +57,8 @@ export const Header: React.FC<HeaderProps> = ({
   const appIconType = settings?.appIconType || 'lucide';
 
   return (
-    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-3 py-2.5 sm:px-6 sm:py-3 shadow-xs w-full max-w-full overflow-x-hidden transition-colors">
-      <div className="max-w-4xl mx-auto flex items-center justify-between gap-1.5 sm:gap-2 w-full min-w-0">
+    <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 py-2.5 sm:py-3 shadow-xs w-full max-w-full transition-colors">
+      <div className="app-container px-3 sm:px-6 flex items-center justify-between gap-1.5 sm:gap-2 min-w-0">
         {/* Logo & Title */}
         <div className="flex items-center gap-2 min-w-0 shrink">
           <button

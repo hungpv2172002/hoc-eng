@@ -585,7 +585,7 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900 w-full max-w-full overflow-x-hidden transition-colors ${
+      className={`app-shell min-h-screen flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900 w-full max-w-full transition-colors ${
         themeMode === 'dark'
           ? 'bg-slate-950 text-slate-100 dark'
           : settings.bgTheme === 'pure-white'
@@ -672,7 +672,7 @@ export default function App() {
       />
 
       {/* MAIN CONTAINER */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-2.5 sm:px-6 py-3 sm:py-8 overflow-x-hidden min-w-0">
+      <main className="app-container flex-1 px-2.5 sm:px-6 py-3 sm:py-8 min-w-0">
         {currentView === 'study' ? (
           <StudyView
             questions={questions}
@@ -730,7 +730,7 @@ export default function App() {
 
       {/* FOOTER */}
       <footer className="border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 py-6 text-xs text-slate-500 dark:text-slate-400 w-full max-w-full overflow-hidden transition-colors">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 w-full min-w-0">
+        <div className="app-container px-4 sm:px-6 flex flex-col md:flex-row items-center justify-between gap-4 min-w-0">
           {/* Bản quyền & Thông tin ứng dụng */}
           <div className="flex flex-col sm:flex-row items-center gap-2 text-center sm:text-left">
             <p className="font-medium text-slate-600 dark:text-slate-300">

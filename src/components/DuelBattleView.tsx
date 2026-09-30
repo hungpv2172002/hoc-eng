@@ -714,7 +714,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   // =========================================================================
   if (!roomState || roomState.status === 'waiting') {
     return (
-      <div className="max-w-3xl w-full mx-auto space-y-4 sm:space-y-6 overflow-x-hidden animate-in fade-in">
+      <div className="w-full mx-auto space-y-4 sm:space-y-6 overflow-x-clip animate-in fade-in">
         {/* Floating Notification */}
         {floatingAlert && (
           <div className="fixed top-4 right-4 z-50 animate-in fade-in slide-in-from-top-4 max-w-sm">
@@ -1548,7 +1548,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   // RENDER 4: MÀN HÌNH THI ĐẤU SONG SONG (LIVE PARALLEL ARENA)
   // =========================================================================
   return (
-    <div className="max-w-3xl w-full mx-auto space-y-3 sm:space-y-4 overflow-x-hidden relative">
+    <div className="w-full mx-auto space-y-3 sm:space-y-4 overflow-x-clip relative">
       {/* Floating Active Emotes over screen */}
       {activeEmotes.length > 0 && (
         <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">

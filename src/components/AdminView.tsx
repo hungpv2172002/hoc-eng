@@ -723,7 +723,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
   // GIAO DIỆN QUẢN TRỊ VIÊN ĐẦY ĐỦ
   return (
-    <div className="max-w-5xl w-full mx-auto space-y-6 overflow-x-hidden min-w-0">
+    <div className="w-full mx-auto space-y-6 overflow-x-clip min-w-0">
       {/* Toast thông báo */}
       {toast && (
         <div
