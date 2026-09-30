@@ -95,7 +95,7 @@ export const Header: React.FC<HeaderProps> = ({
             className={`inline-flex items-center gap-1 px-2 py-1.5 sm:px-2.5 rounded-xl text-xs font-black transition-all cursor-pointer border shadow-2xs active:scale-95 shrink-0 ${
               currentView === 'duel'
                 ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm'
-                : 'bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:from-violet-700 hover:to-cyan-600 text-white border-indigo-400 shadow-xs'
+                : 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-200 hover:bg-violet-100 border-violet-200 dark:border-violet-800'
             }`}
             title={currentView === 'duel' ? 'Trở về phòng học' : 'Đấu Trường Dịch 1v1 Song Song Trực Tuyến'}
           >
@@ -114,7 +114,7 @@ export const Header: React.FC<HeaderProps> = ({
             className={`inline-flex items-center gap-1 px-2 py-1.5 sm:px-2.5 rounded-xl text-xs font-black transition-all cursor-pointer border shadow-2xs active:scale-95 shrink-0 ${
               currentView === 'battle'
                 ? 'bg-slate-800 dark:bg-slate-800 hover:bg-slate-900 text-white border-slate-700'
-                : 'bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-600 hover:to-rose-700 text-white border-amber-400 shadow-xs shadow-rose-200 dark:shadow-none'
+                : 'bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-200 hover:bg-amber-100 border-amber-200 dark:border-amber-800'
             }`}
             title={currentView === 'battle' ? 'Trở về phòng học' : 'Thử thách Tháp Ma Vương'}
           >

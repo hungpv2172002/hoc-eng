@@ -5,6 +5,8 @@ import { supabase, isSupabaseConfigured } from './lib/supabaseClient';
 import { getDailyQuestions, shuffleQuestions } from './lib/questionRotation';
 import { Header } from './components/Header';
 import { StudyView } from './components/StudyView';
+import { LearningHero, LearningGoal } from './components/LearningHero';
+import './learning.css';
 import { AdminView } from './components/AdminView';
 import { TowerBattleView } from './components/TowerBattleView';
 import { DuelBattleView } from './components/DuelBattleView';
@@ -535,7 +537,7 @@ export default function App() {
         <div
           className={`w-full py-2 px-3 text-xs font-semibold text-center flex items-center justify-center gap-2 relative z-40 transition-colors ${
             settings.announcementType === 'vip'
-              ? 'bg-gradient-to-r from-amber-500 via-rose-500 to-purple-600 text-white shadow-2xs'
+              ? 'bg-emerald-900 text-emerald-50 shadow-2xs'
               : settings.announcementType === 'success'
               ? 'bg-emerald-600 text-white'
               : settings.announcementType === 'warning'
@@ -607,7 +609,7 @@ export default function App() {
       {/* MAIN CONTAINER */}
       <main className="app-container flex-1 px-2.5 sm:px-6 py-3 sm:py-8 min-w-0">
         {currentView === 'study' ? (
-          <StudyView
+          <StudyLanding
             questions={questions}
             profile={profile}
             todayCount={todayCount}
@@ -758,4 +760,17 @@ export default function App() {
       <GuideModal isOpen={isGuideOpen} onClose={() => setIsGuideOpen(false)} />
     </div>
   );
+}
+
+function StudyLanding(props: React.ComponentProps<typeof StudyView>) {
+  const [goal, setGoal] = useState<LearningGoal | null>(null);
+  const lesson = React.useRef<HTMLElement>(null);
+  const start = (next: LearningGoal) => {
+    setGoal(next);
+    requestAnimationFrame(() => {
+      lesson.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+      lesson.current?.focus({ preventScroll: true });
+    });
+  };
+  return <><LearningHero onStart={start} /><section ref={lesson} id="daily-practice" className="study-workspace" tabIndex={-1} aria-label="Bài luyện tiếng Anh"><div className="study-workspace-heading">GÓC LUYỆN TẬP CỦA BẠN</div><StudyView {...props} key={goal || 'default'} initialLevel={goal === 'school' ? 'A2' : goal === 'ielts' ? 'B2' : goal === 'conversation' ? 'B1' : undefined} /></section></>;
 }
