@@ -14,7 +14,7 @@ dotenv.config();
 
 const app = express();
 const httpServer = http.createServer(app);
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 app.use(express.json());
 
@@ -28,7 +28,7 @@ app.use((req, res, next) => {
   }
 
   // Nếu chạy trên serverless và đường dẫn thiếu /api (do rewrite)
-  if (!req.url.startsWith('/api') && !req.url.startsWith('/index.html') && req.url !== '/') {
+  if (process.env.VERCEL && !req.url.startsWith('/api') && !req.url.startsWith('/index.html') && req.url !== '/') {
     req.url = '/api' + (req.url.startsWith('/') ? '' : '/') + req.url;
   }
   next();
@@ -1023,6 +1023,7 @@ let quickMatchWaitingQueue: {
   player: { id: string; name: string; avatar_url?: string };
   category: string;
   questionCount: number;
+  bindRoom: (roomId: string) => void;
 } | null = null;
 
 function normalizeSentenceServer(text: string): string {
@@ -1151,9 +1152,32 @@ app.get(['/api/duel/stats', '/duel/stats'], (req, res) => {
 });
 
 // Khởi tạo WebSocketServer gắn vào httpServer
-const wss = new WebSocketServer({ server: httpServer, path: '/ws/duel' });
+const wss = new WebSocketServer({ server: httpServer, path: '/ws/duel', maxPayload: 16384 });
+const aliveSockets = new Set<WebSocket>();
+const heartbeat = setInterval(() => {
+  for (const socket of wss.clients) {
+    if (!aliveSockets.delete(socket)) { socket.terminate(); continue; }
+    socket.ping();
+  }
+}, 30000);
+heartbeat.unref();
+wss.on('close', () => clearInterval(heartbeat));
+
+type LobbyPeer = { ws: WebSocket; player: { id: string; name: string; avatar_url?: string; email?: string }; roomId: string | null };
+const lobbyPeers = new Map<WebSocket, LobbyPeer>();
+const duelInvites = new Map<string, { from: WebSocket; to: WebSocket; roomId: string; expiresAt: number }>();
+function sendDuel(ws: WebSocket, payload: any) {
+  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+}
+function publishLobby() {
+  const players = [...lobbyPeers.values()].filter(p => !p.roomId && p.ws.readyState === WebSocket.OPEN)
+    .map(p => ({ id: p.player.id, full_name: p.player.name, avatar_url: p.player.avatar_url }));
+  for (const peer of lobbyPeers.values()) sendDuel(peer.ws, { type: 'lobby_players', players });
+}
 
 wss.on('connection', (ws: WebSocket) => {
+  aliveSockets.add(ws);
+  ws.on('pong', () => aliveSockets.add(ws));
   let currentRoomId: string | null = null;
   let currentPlayerId: string | null = null;
 
@@ -1162,6 +1186,48 @@ wss.on('connection', (ws: WebSocket) => {
       const data = JSON.parse(messageRaw.toString());
       const { type } = data;
 
+      const fail = (message: string) => sendDuel(ws, { type: 'error', message });
+      if (type === 'register_lobby') {
+        if (!data.player || typeof data.player.id !== 'string' || !data.player.id || data.player.id.length > 128) return;
+        if ([...lobbyPeers.values()].some(p => p.ws !== ws && p.player.id === data.player.id)) {
+          fail('Tài khoản này đang mở đấu trường ở tab khác. Hãy đóng tab đó trước.');
+          ws.close(1008); return;
+        }
+        if (lobbyPeers.has(ws)) return;
+        lobbyPeers.set(ws, { ws, player: { id: data.player.id, name: String(data.player.name || 'Người chơi').slice(0, 80), avatar_url: data.player.avatar_url, email: String(data.player.email || '').trim().toLowerCase() }, roomId: null });
+        currentPlayerId = data.player.id;
+        publishLobby(); return;
+      }
+      const peer = lobbyPeers.get(ws);
+      if (!peer) { fail('Vui lòng kết nối lại đấu trường.'); return; }
+      if (type === 'send_invite') {
+        const room = currentRoomId && duelRooms.get(currentRoomId);
+        if (!room || room.status !== 'waiting' || room.players.size !== 1) { fail('Hãy tạo phòng trống trước khi mời.'); return; }
+        const target = [...lobbyPeers.values()].find(p => p.ws !== ws && (p.player.id === data.targetId || (data.targetEmail && p.player.email === String(data.targetEmail).trim().toLowerCase())));
+        if (!target || target.roomId || quickMatchWaitingQueue?.ws === target.ws) { fail('Bạn này đang bận hoặc chưa vào đấu trường. Hãy gửi link phòng cho bạn.'); return; }
+        for (const [id, invite] of duelInvites) if (invite.expiresAt < Date.now() || invite.from === ws) duelInvites.delete(id);
+        const inviteId = crypto.randomUUID();
+        duelInvites.set(inviteId, { from: ws, to: target.ws, roomId: room.roomId, expiresAt: Date.now() + 60000 });
+        sendDuel(target.ws, { type: 'duel_invitation', inviteId, roomId: room.roomId, fromName: peer.player.name, expiresAt: Date.now() + 60000 });
+        sendDuel(ws, { type: 'invite_sent' }); return;
+      }
+      if (type === 'respond_invite') {
+        const invite = duelInvites.get(data.inviteId);
+        if (!invite || invite.to !== ws || invite.expiresAt < Date.now()) { fail('Lời mời đã hết hạn.'); return; }
+        duelInvites.delete(data.inviteId);
+        if (!data.accept) { sendDuel(invite.from, { type: 'invite_declined' }); return; }
+        const room = duelRooms.get(invite.roomId);
+        if (currentRoomId || !room || room.status !== 'waiting' || room.players.size !== 1 || ![...room.players.values()].some(p => p.ws === invite.from)) { fail('Phòng không còn khả dụng.'); return; }
+        ws.emit('message', Buffer.from(JSON.stringify({ type: 'join_room', roomId: invite.roomId })));
+        return;
+      }
+      if (type === 'join_room' || type === 'find_match') {
+        if (currentRoomId) { fail('Hãy rời phòng hiện tại trước.'); return; }
+        data.player = peer.player;
+        data.questionCount = [5, 10, 15, 20].includes(data.questionCount) ? data.questionCount : 5;
+        data.category = typeof data.category === 'string' ? data.category.slice(0, 80) : 'all';
+        if (type === 'join_room' && quickMatchWaitingQueue?.ws === ws) quickMatchWaitingQueue = null;
+      }
       // 1. Tham gia phòng hoặc Tạo phòng mới
       if (type === 'join_room') {
         const { roomId: rawRoomId, player, questionCount = 5, category = 'all' } = data;
@@ -1174,21 +1240,8 @@ wss.on('connection', (ws: WebSocket) => {
 
         if (targetRoomId) {
           room = duelRooms.get(targetRoomId);
-          if (!room) {
-            room = {
-              roomId: targetRoomId,
-              status: 'waiting',
-              category: category || 'all',
-              questionCount: questionCount || 5,
-              players: new Map(),
-              questions: [],
-              currentRound: 0,
-              roundTimerSeconds: 60,
-              firstCorrectAnswers: new Map(),
-              rematchVotes: new Map(),
-            };
-            duelRooms.set(targetRoomId, room);
-          }
+          if (!room) { fail('Phòng không tồn tại hoặc đã đóng.'); return; }
+          if (room.status !== 'waiting') { fail('Trận đấu đã bắt đầu.'); return; }
         } else {
           targetRoomId = generateDuelRoomId();
           room = {
@@ -1217,6 +1270,8 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         currentRoomId = targetRoomId;
+        peer.roomId = targetRoomId;
+        publishLobby();
         currentPlayerId = pId;
 
         const isHost = room.players.size === 0 || (room.players.has(pId) && room.players.get(pId)!.isHost);
@@ -1271,13 +1326,13 @@ wss.on('connection', (ws: WebSocket) => {
           quickMatchWaitingQueue = null;
 
           const newRoomId = generateDuelRoomId();
-          const matchQuestions = pickDuelQuestions(questionCount, category);
+          const matchQuestions = pickDuelQuestions(waitingItem.questionCount, waitingItem.category);
 
           const room: ServerDuelRoom = {
             roomId: newRoomId,
             status: 'in_progress',
-            category,
-            questionCount,
+            category: waitingItem.category,
+            questionCount: matchQuestions.length,
             players: new Map(),
             questions: matchQuestions,
             currentRound: 0,
@@ -1302,6 +1357,9 @@ wss.on('connection', (ws: WebSocket) => {
           });
 
           currentRoomId = newRoomId;
+          peer.roomId = newRoomId;
+          waitingItem.bindRoom(newRoomId);
+          publishLobby();
           currentPlayerId = pId;
 
           room.players.set(pId, {
@@ -1334,6 +1392,7 @@ wss.on('connection', (ws: WebSocket) => {
             player: { id: pId, name: pName, avatar_url: pAvatar },
             category,
             questionCount,
+            bindRoom: (roomId) => { currentRoomId = roomId; peer.roomId = roomId; },
           };
           currentPlayerId = pId;
           ws.send(JSON.stringify({ type: 'waiting_in_queue', message: 'Đang tìm kiếm đối thủ trực tuyến...' }));
@@ -1367,8 +1426,8 @@ wss.on('connection', (ws: WebSocket) => {
         if (!room || room.status !== 'waiting') return;
         const host = room.players.get(currentPlayerId);
         if (!host || !host.isHost) return;
-        if (data.questionCount) room.questionCount = data.questionCount;
-        if (data.category) room.category = data.category;
+        if ([5, 10, 15, 20].includes(data.questionCount)) room.questionCount = data.questionCount;
+        if (typeof data.category === 'string') room.category = data.category.slice(0, 80);
         broadcastRoomState(room);
       }
 
@@ -1383,7 +1442,11 @@ wss.on('connection', (ws: WebSocket) => {
           return;
         }
 
+        if (room.status !== 'waiting' || room.players.size !== 2 || ![...room.players.values()].every(p => p.isReady)) {
+          fail('Cần đủ hai người và cả hai sẵn sàng.'); return;
+        }
         room.questions = pickDuelQuestions(room.questionCount, room.category);
+        room.questionCount = room.questions.length;
         room.status = 'countdown';
         room.currentRound = 0;
         room.firstCorrectAnswers.clear();
@@ -1402,7 +1465,8 @@ wss.on('connection', (ws: WebSocket) => {
         broadcastRoomState(room);
 
         let count = 3;
-        const countdownTimer = setInterval(() => {
+        broadcastToRoom(room, { type: 'countdown_tick', count: 3 });
+        const countdownTimer = room.countdownInterval = setInterval(() => {
           count--;
           if (count > 0) {
             broadcastToRoom(room, { type: 'countdown_tick', count });
@@ -1426,6 +1490,7 @@ wss.on('connection', (ws: WebSocket) => {
         if (!player || player.isFinished) return;
 
         const { questionIndex, answer } = data;
+        if (questionIndex !== player.currentQuestionIndex || typeof answer !== 'string' || answer.length > 2000) { fail('Câu trả lời không hợp lệ.'); return; }
         const currentQ = room.questions[questionIndex];
         if (!currentQ) return;
 
@@ -1602,7 +1667,7 @@ wss.on('connection', (ws: WebSocket) => {
       else if (type === 'request_rematch') {
         if (!currentRoomId || !currentPlayerId) return;
         const room = duelRooms.get(currentRoomId);
-        if (!room) return;
+        if (!room || room.status !== 'finished' || room.players.size !== 2) { fail('Cần đủ hai người để tái đấu.'); return; }
 
         room.rematchVotes.set(currentPlayerId, true);
 
@@ -1634,7 +1699,8 @@ wss.on('connection', (ws: WebSocket) => {
           broadcastRoomState(room);
 
           let count = 3;
-          const cd = setInterval(() => {
+          broadcastToRoom(room, { type: 'countdown_tick', count: 3 });
+          const cd = room.countdownInterval = setInterval(() => {
             count--;
             if (count > 0) {
               broadcastToRoom(room, { type: 'countdown_tick', count });
@@ -1662,11 +1728,13 @@ wss.on('connection', (ws: WebSocket) => {
           if (room) {
             room.players.delete(currentPlayerId);
             if (room.players.size === 0) {
+              clearInterval(room.countdownInterval);
               duelRooms.delete(currentRoomId);
             } else {
               const remainingPlayer = Array.from(room.players.values())[0];
               if (remainingPlayer) {
                 remainingPlayer.isHost = true;
+                if (room.status === 'in_progress' || room.status === 'countdown') { clearInterval(room.countdownInterval); room.status = 'finished'; room.winnerId = remainingPlayer.id; }
               }
               broadcastRoomState(room);
               broadcastToRoom(room, {
@@ -1676,7 +1744,8 @@ wss.on('connection', (ws: WebSocket) => {
             }
           }
           currentRoomId = null;
-          currentPlayerId = null;
+          peer.roomId = null;
+          publishLobby();
         }
       }
     } catch (err: any) {
@@ -1685,6 +1754,10 @@ wss.on('connection', (ws: WebSocket) => {
   });
 
   ws.on('close', () => {
+    aliveSockets.delete(ws);
+    lobbyPeers.delete(ws);
+    for (const [id, invite] of duelInvites) if (invite.from === ws || invite.to === ws) duelInvites.delete(id);
+    publishLobby();
     if (quickMatchWaitingQueue && quickMatchWaitingQueue.ws === ws) {
       quickMatchWaitingQueue = null;
     }
@@ -1694,11 +1767,13 @@ wss.on('connection', (ws: WebSocket) => {
       if (room) {
         room.players.delete(currentPlayerId);
         if (room.players.size === 0) {
+          clearInterval(room.countdownInterval);
           duelRooms.delete(currentRoomId);
         } else {
           const remainingPlayer = Array.from(room.players.values())[0];
           if (remainingPlayer) {
             remainingPlayer.isHost = true;
+            if (room.status === 'in_progress' || room.status === 'countdown') { clearInterval(room.countdownInterval); room.status = 'finished'; room.winnerId = remainingPlayer.id; }
           }
           broadcastRoomState(room);
           broadcastToRoom(room, {
@@ -1738,3 +1813,4 @@ if (!process.env.VERCEL) {
 }
 
 export default app;
+

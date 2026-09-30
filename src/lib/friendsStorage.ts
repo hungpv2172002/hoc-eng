@@ -1,35 +1,6 @@
 import { Friend, Profile } from '../types';
 import { syncFriendsCount } from './badgeSystem';
 
-const INITIAL_FRIENDS: Friend[] = [
-  {
-    id: 'friend-nam',
-    email: 'nam.nguyen@gmail.com',
-    name: 'Nguyễn Văn Nam',
-    avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=NamNguyen',
-    added_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    status: 'online',
-    is_vip: false,
-  },
-  {
-    id: 'friend-hoa',
-    email: 'hoa.tran@gmail.com',
-    name: 'Trần Thị Hoa',
-    avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=HoaTran',
-    added_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    status: 'online',
-    is_vip: true,
-  },
-  {
-    id: 'friend-linh',
-    email: 'linh.le@gmail.com',
-    name: 'Lê Thùy Linh',
-    avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=LinhLe',
-    added_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    status: 'offline',
-    is_vip: false,
-  },
-];
 
 function getStorageKey(userEmail?: string): string {
   const normalized = (userEmail || 'default').toLowerCase().trim();
@@ -47,7 +18,7 @@ export function getFriendsList(userEmail?: string): Friend[] {
   } catch (e) {}
 
   // Trả về danh sách khởi tạo mẫu ban đầu
-  return INITIAL_FRIENDS;
+  return [];
 }
 
 export function saveFriendsList(friends: Friend[], userEmail?: string): void {
@@ -145,7 +116,7 @@ export function addFriendByEmail(
       foundProfile?.avatar_url ||
       `https://api.dicebear.com/7.x/avataaars/svg?seed=${cleanTargetEmail}`,
     added_at: new Date().toISOString(),
-    status: 'online',
+    status: 'offline',
     is_vip: foundProfile?.is_vip || false,
   };
 
@@ -166,3 +137,4 @@ export function removeFriend(friendId: string, userEmail?: string): Friend[] {
   saveFriendsList(updated, userEmail);
   return updated;
 }
+
