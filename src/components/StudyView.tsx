@@ -49,6 +49,7 @@ import { WordLookupModal } from './WordLookupModal';
 
 
 interface StudyViewProps {
+  initialLevel?: CEFRLevel;
   questions: Question[];
   profile: Profile | null;
   todayCount: number;
@@ -75,6 +76,7 @@ export function speakText(text: string, rate: number = 0.9) {
 }
 
 export const StudyView: React.FC<StudyViewProps> = ({
+  initialLevel,
   questions,
   profile,
   todayCount,
@@ -115,6 +117,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   // 3. Quản lý Trình độ người học (all, A1, A2, B1, B2, C1)
   const [selectedLevel, setSelectedLevel] = useState<CEFRLevel>(() => {
+    if (initialLevel) return initialLevel;
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('translation_user_cefr_level');
