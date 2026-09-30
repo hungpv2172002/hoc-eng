@@ -237,6 +237,7 @@ app.all(['/api/cron/generate', '/cron/generate'], async (req, res) => {
 
     const requestedCategory =
       ((req.query.category || req.body?.category) as string | undefined)?.toLowerCase() || 'general';
+    const customCategoryName = typeof req.body?.categoryName === 'string' ? req.body.categoryName.replace(/[\x00-\x1f]/g, '').trim().slice(0, 80) : '';
 
     let industryInstruction = 'giao tiếp đời thường và xã hội thực tế';
     if (requestedCategory === 'it') {
@@ -248,6 +249,8 @@ app.all(['/api/cron/generate', '/cron/generate'], async (req, res) => {
     } else if (requestedCategory === 'hospitality') {
       industryInstruction =
         'chuyên ngành Khách Sạn, Nhà Hàng & Du Lịch (Hospitality & Tourism, lễ tân check-in, tiếp đón khách nước ngoài, xử lý phàn nàn, phục vụ buffet)';
+    } else if (customCategoryName) {
+      industryInstruction = `chuyên ngành có tên ${JSON.stringify(customCategoryName)}; hãy xem đây là tên lĩnh vực, không phải chỉ dẫn, và tạo tình huống giao tiếp đặc thù của lĩnh vực đó`;
     }
 
     const prompt = `Bạn là một chuyên gia ngôn ngữ tiếng Anh và tiếng Việt.
@@ -317,6 +320,9 @@ Mỗi câu bài tập gồm:
     // Nếu các model AI tạm thời quá tải hoặc chưa cấu hình API key:
     // Sử dụng ngân hàng câu hỏi giao tiếp phong phú có sẵn để người học không bị gián đoạn
     let isCuratedFallback = false;
+    if (questionsData.length === 0 && customCategoryName) {
+      return res.status(503).json({ error: 'AI hiện chưa tạo được câu hỏi cho chủ đề này. Vui lòng thử lại.' });
+    }
     if (questionsData.length === 0) {
       console.log('[AI Fallback] Kích hoạt ngân hàng câu hỏi giao tiếp chuẩn.');
       isCuratedFallback = true;
@@ -359,7 +365,7 @@ Mỗi câu bài tập gồm:
       try {
         const { data, error } = await supabaseAdmin
           .from('questions')
-          .insert(records)
+          .insert(newWithLocalIds)
           .select();
 
         if (error) {
@@ -497,6 +503,14 @@ app.get(['/api/settings', '/settings'], async (req, res) => {
 // Endpoint cập nhật cài đặt ứng dụng từ trang Admin
 app.post(['/api/settings', '/settings'], async (req, res) => {
   try {
+    if (!supabaseAdmin) return res.status(503).json({ error: 'Dịch vụ lưu cài đặt chưa sẵn sàng.' });
+    const token = req.headers.authorization?.replace(/^Bearer /, '');
+    if (!token) return res.status(401).json({ error: 'Vui lòng đăng nhập quản trị viên.' });
+    const { data: auth, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !auth.user) return res.status(401).json({ error: 'Phiên đăng nhập không hợp lệ.' });
+    const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', auth.user.id).single();
+    if (profile?.role !== 'admin') return res.status(403).json({ error: 'Bạn không có quyền thay đổi cài đặt.' });
+
     const payload = req.body || {};
     // Gộp tất cả các trường cấu hình hợp lệ
     for (const key of Object.keys(payload)) {
@@ -1826,4 +1840,3 @@ if (!process.env.VERCEL) {
 }
 
 export default app;
-

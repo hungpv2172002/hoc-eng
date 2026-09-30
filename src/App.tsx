@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Profile, Question, AppSettings } from './types';
+import { Profile, Question, AppSettings, CareerTrackInfo } from './types';
 import { INITIAL_QUESTIONS } from './data/initialQuestions';
 import { supabase, isSupabaseConfigured } from './lib/supabaseClient';
 import { getDailyQuestions, shuffleQuestions } from './lib/questionRotation';
@@ -427,6 +427,7 @@ export default function App() {
           ? categoryInput.trim().toLowerCase()
           : undefined;
 
+      const customTrack = settings.customCareerTracks?.find((track) => track.id === validCategory);
       const catParam = validCategory ? `&category=${encodeURIComponent(validCategory)}` : '';
       const res = await fetch(`/api/cron/generate?key=my_super_secret_cron_token_12345${catParam}`, {
         method: 'POST',
@@ -434,7 +435,7 @@ export default function App() {
           'Content-Type': 'application/json',
           Authorization: 'Bearer my_super_secret_cron_token_12345',
         },
-        body: JSON.stringify({ category: validCategory }),
+        body: JSON.stringify({ category: validCategory, categoryName: customTrack?.name }),
       });
 
       const json = await res.json();
@@ -454,6 +455,8 @@ export default function App() {
           ? 'chuyên ngành Kinh Doanh & Sales'
           : validCategory === 'hospitality'
           ? 'chuyên ngành Khách Sạn & Du Lịch'
+          : customTrack?.name
+          ? `chuyên ngành ${customTrack.name}`
           : 'giao tiếp chung';
 
       setToastMessage({
@@ -488,50 +491,18 @@ export default function App() {
 
   // 7. Cập nhật và lưu cài đặt Tên, Biểu tượng & Kênh liên hệ từ trang Quản trị
   const handleSaveSettings = async (newSettings: AppSettings) => {
+    if (isSupabaseConfigured) {
+      const { error } = await supabase.from('app_settings').upsert({ id: 'default', value: newSettings, updated_at: new Date().toISOString() });
+      if (error) throw error;
+    } else if (newSettings.customCareerTracks) {
+      throw new Error('Chưa kết nối Supabase; chủ đề chưa được lưu.');
+    }
     setSettings(newSettings);
     try {
       localStorage.setItem('app_custom_settings', JSON.stringify(newSettings));
-      localStorage.setItem(
-        'app_contact_settings',
-        JSON.stringify({
-          contactEmail: newSettings.contactEmail,
-          contactFacebook: newSettings.contactFacebook,
-          contactTiktok: newSettings.contactTiktok,
-        })
-      );
+      localStorage.setItem('app_contact_settings', JSON.stringify({ contactEmail: newSettings.contactEmail, contactFacebook: newSettings.contactFacebook, contactTiktok: newSettings.contactTiktok }));
     } catch (e) {}
-
-    // 1. Lưu trực tiếp vào Supabase cloud database nếu có kết nối
-    if (isSupabaseConfigured) {
-      try {
-        await supabase.from('app_settings').upsert({
-          id: 'default',
-          value: newSettings,
-          updated_at: new Date().toISOString(),
-        });
-      } catch (dbErr) {
-        console.warn('Lỗi đồng bộ app_settings lên Supabase:', dbErr);
-      }
-    }
-
-    // 2. Lưu lên API máy chủ backend
-    try {
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings),
-      });
-      if (!res.ok) {
-        throw new Error('Lỗi từ máy chủ khi lưu cài đặt.');
-      }
-    } catch (err: any) {
-      console.warn('Lưu lên máy chủ gặp trục trặc, dữ liệu vẫn được lưu tại trình duyệt & Supabase:', err);
-    }
-
-    setToastMessage({
-      type: 'success',
-      text: `Đã lưu cài đặt và cố định kênh liên hệ thành công!`,
-    });
+    setToastMessage({ type: 'success', text: 'Đã lưu cài đặt thành công!' });
     setTimeout(() => setToastMessage(null), 5000);
   };
 
@@ -649,6 +620,7 @@ export default function App() {
             todayDateString={todayDateString}
             onOpenBattle={() => setCurrentView('battle')}
             onOpenDuel={() => setCurrentView('duel')}
+            customTracks={settings.customCareerTracks as CareerTrackInfo[] | undefined}
           />
         ) : currentView === 'duel' ? (
           <DuelBattleView
@@ -666,6 +638,7 @@ export default function App() {
           />
         ) : (
           <AdminView
+            onQuestionAdded={(question) => setQuestions(prev => [...prev, question])}
             currentUser={profile}
             profiles={allProfiles}
             onToggleVip={handleToggleVip}

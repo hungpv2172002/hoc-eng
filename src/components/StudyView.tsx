@@ -58,6 +58,7 @@ interface StudyViewProps {
   todayDateString?: string;
   onOpenBattle?: () => void;
   onOpenDuel?: () => void;
+  customTracks?: CareerTrackInfo[];
 }
 
 export function normalizeSentence(text: string): string {
@@ -84,6 +85,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
   todayDateString,
   onOpenBattle,
   onOpenDuel,
+  customTracks = [],
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
@@ -110,6 +112,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   // 2. Phân loại ngành nghề cho VIP
   const [selectedCategory, setSelectedCategory] = useState<CareerCategory>('general');
+  const careerTracks = useMemo(() => [...CAREER_TRACKS, ...customTracks], [customTracks]);
   const [vipModalTrack, setVipModalTrack] = useState<CareerTrackInfo | null>(null);
   const [shuffleSeed, setShuffleSeed] = useState(0);
 
@@ -186,12 +189,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   // Đếm số lượng câu hỏi theo từng chuyên ngành
   const questionCounts = useMemo(() => {
-    const counts: Record<CareerCategory, number> = {
-      general: 0,
-      it: 0,
-      business: 0,
-      hospitality: 0,
-    };
+    const counts: Record<CareerCategory, number> = Object.fromEntries(careerTracks.map((track) => [track.id, 0]));
     allAvailableQuestions.forEach((q) => {
       const cat = q.category || 'general';
       if (counts[cat] !== undefined) {
@@ -199,7 +197,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
       }
     });
     return counts;
-  }, [allAvailableQuestions]);
+  }, [allAvailableQuestions, careerTracks]);
 
   // Đếm số lượng câu hỏi theo từng trình độ CEFR cho chuyên ngành hiện tại
   const levelCounts = useMemo(() => {
@@ -235,24 +233,11 @@ export const StudyView: React.FC<StudyViewProps> = ({
         (q) => (q.category || 'general') === selectedCategory
       );
     }
-    if (pool.length === 0) {
-      pool = allAvailableQuestions;
-    }
+
 
     // Lọc theo trình độ A1, A2, B1, B2, C1
     if (selectedLevel !== 'all') {
-      const levelMatches = pool.filter((q) => getQuestionLevel(q) === selectedLevel);
-      if (levelMatches.length > 0) {
-        pool = levelMatches;
-      } else {
-        // Fallback sang tất cả các câu của trình độ đó nếu chuyên ngành hiện tại chưa có
-        const globalLevelMatches = allAvailableQuestions.filter(
-          (q) => getQuestionLevel(q) === selectedLevel
-        );
-        if (globalLevelMatches.length > 0) {
-          pool = globalLevelMatches;
-        }
-      }
+      pool = pool.filter((q) => getQuestionLevel(q) === selectedLevel);
     }
 
     // Tự động xáo trộn ngẫu nhiên hoàn toàn (Fisher-Yates) mỗi lần refresh hoặc đổi bộ lọc
@@ -364,9 +349,9 @@ export const StudyView: React.FC<StudyViewProps> = ({
   };
 
   // Icon & nhãn cho từng category
-  const currentCategoryInfo = CAREER_TRACKS.find(
+  const currentCategoryInfo = careerTracks.find(
     (t) => t.id === (currentQuestion?.category || 'general')
-  ) || CAREER_TRACKS[0];
+  ) || careerTracks[0];
 
   return (
     <div className="w-full mx-auto space-y-4 sm:space-y-6 overflow-x-clip">
@@ -377,6 +362,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         profile={profile}
         onOpenVipPrompt={(track) => setVipModalTrack(track)}
         questionCounts={questionCounts}
+        tracks={careerTracks}
       />
 
       {/* 0.1. THANH LỰA CHỌN TRÌNH ĐỘ CEFR (A1, A2, B1, B2, C1, TẤT CẢ) */}
@@ -541,7 +527,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
       ) : !currentQuestion ? (
         <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 w-full min-w-0">
           <RefreshCw className="w-8 h-8 text-indigo-600 dark:text-indigo-400 animate-spin mx-auto mb-3" />
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Đang tải danh sách câu hỏi...</p>
+          <p className="text-slate-500 dark:text-slate-400 font-medium">Chưa có câu hỏi cho ngành và trình độ này. Bạn có thể đổi bộ lọc hoặc thêm câu trong Cài đặt quản trị.</p>
         </div>
       ) : (
         /* 2. GIAO DIỆN HỌC BÀI */

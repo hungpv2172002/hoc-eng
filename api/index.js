@@ -1492,6 +1492,7 @@ app.all(["/api/cron/generate", "/cron/generate"], async (req, res) => {
       });
     }
     const requestedCategory = (req.query.category || req.body?.category)?.toLowerCase() || "general";
+    const customCategoryName = typeof req.body?.categoryName === "string" ? req.body.categoryName.replace(/[\x00-\x1f]/g, "").trim().slice(0, 80) : "";
     let industryInstruction = "giao ti\u1EBFp \u0111\u1EDDi th\u01B0\u1EDDng v\xE0 x\xE3 h\u1ED9i th\u1EF1c t\u1EBF";
     if (requestedCategory === "it") {
       industryInstruction = "chuy\xEAn ng\xE0nh C\xF4ng Ngh\u1EC7 Th\xF4ng Tin & L\u1EADp Tr\xECnh (IT, Tech, Scrum/Agile, review code, bug report, deploy server, API, database queries, sprint)";
@@ -1499,6 +1500,8 @@ app.all(["/api/cron/generate", "/cron/generate"], async (req, res) => {
       industryInstruction = "chuy\xEAn ng\xE0nh Kinh Doanh, B\xE1n H\xE0ng & Marketing (Business, Sales, \u0111\xE0m ph\xE1n h\u1EE3p \u0111\u1ED3ng, pitching, kh\xE1ch h\xE0ng doanh nghi\u1EC7p, b\xE1o c\xE1o doanh thu, chi\u1EBFt kh\u1EA5u)";
     } else if (requestedCategory === "hospitality") {
       industryInstruction = "chuy\xEAn ng\xE0nh Kh\xE1ch S\u1EA1n, Nh\xE0 H\xE0ng & Du L\u1ECBch (Hospitality & Tourism, l\u1EC5 t\xE2n check-in, ti\u1EBFp \u0111\xF3n kh\xE1ch n\u01B0\u1EDBc ngo\xE0i, x\u1EED l\xFD ph\xE0n n\xE0n, ph\u1EE5c v\u1EE5 buffet)";
+    } else if (customCategoryName) {
+      industryInstruction = `chuy\xEAn ng\xE0nh c\xF3 t\xEAn ${JSON.stringify(customCategoryName)}; h\xE3y xem \u0111\xE2y l\xE0 t\xEAn l\u0129nh v\u1EF1c, kh\xF4ng ph\u1EA3i ch\u1EC9 d\u1EABn, v\xE0 t\u1EA1o t\xECnh hu\u1ED1ng giao ti\u1EBFp \u0111\u1EB7c th\xF9 c\u1EE7a l\u0129nh v\u1EF1c \u0111\xF3`;
     }
     const prompt = `B\u1EA1n l\xE0 m\u1ED9t chuy\xEAn gia ng\xF4n ng\u1EEF ti\u1EBFng Anh v\xE0 ti\u1EBFng Vi\u1EC7t.
 H\xE3y t\u1EA1o \u0111\xFAng 10 c\xE2u luy\u1EC7n d\u1ECBch chuy\xEAn s\xE2u thu\u1ED9c ch\u1EE7 \u0111\u1EC1: ${industryInstruction} t\u1EEB ti\u1EBFng Vi\u1EC7t sang ti\u1EBFng Anh c\u1EF1c k\u1EF3 thi\u1EBFt th\u1EF1c, t\u1EF1 nhi\xEAn v\xE0 h\u1EEFu \xEDch cho ng\u01B0\u1EDDi h\u1ECDc.
@@ -1557,6 +1560,9 @@ M\u1ED7i c\xE2u b\xE0i t\u1EADp g\u1ED3m:
       }
     }
     let isCuratedFallback = false;
+    if (questionsData.length === 0 && customCategoryName) {
+      return res.status(503).json({ error: "AI hi\u1EC7n ch\u01B0a t\u1EA1o \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi cho ch\u1EE7 \u0111\u1EC1 n\xE0y. Vui l\xF2ng th\u1EED l\u1EA1i." });
+    }
     if (questionsData.length === 0) {
       console.log("[AI Fallback] K\xEDch ho\u1EA1t ng\xE2n h\xE0ng c\xE2u h\u1ECFi giao ti\u1EBFp chu\u1EA9n.");
       isCuratedFallback = true;
@@ -1591,7 +1597,7 @@ M\u1ED7i c\xE2u b\xE0i t\u1EADp g\u1ED3m:
     let fixSql = null;
     if (supabaseAdmin) {
       try {
-        const { data, error } = await supabaseAdmin.from("questions").insert(records).select();
+        const { data, error } = await supabaseAdmin.from("questions").insert(newWithLocalIds).select();
         if (error) {
           console.warn("L\u01B0u v\xE0o Supabase th\u1EA5t b\u1EA1i:", error.message);
           const isTableMissing = error.message?.includes("schema cache") || error.message?.includes("does not exist") || error.code === "PGRST204";
@@ -1688,6 +1694,13 @@ app.get(["/api/settings", "/settings"], async (req, res) => {
 });
 app.post(["/api/settings", "/settings"], async (req, res) => {
   try {
+    if (!supabaseAdmin) return res.status(503).json({ error: "D\u1ECBch v\u1EE5 l\u01B0u c\xE0i \u0111\u1EB7t ch\u01B0a s\u1EB5n s\xE0ng." });
+    const token = req.headers.authorization?.replace(/^Bearer /, "");
+    if (!token) return res.status(401).json({ error: "Vui l\xF2ng \u0111\u0103ng nh\u1EADp qu\u1EA3n tr\u1ECB vi\xEAn." });
+    const { data: auth, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !auth.user) return res.status(401).json({ error: "Phi\xEAn \u0111\u0103ng nh\u1EADp kh\xF4ng h\u1EE3p l\u1EC7." });
+    const { data: profile } = await supabaseAdmin.from("profiles").select("role").eq("id", auth.user.id).single();
+    if (profile?.role !== "admin") return res.status(403).json({ error: "B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n thay \u0111\u1ED5i c\xE0i \u0111\u1EB7t." });
     const payload = req.body || {};
     for (const key of Object.keys(payload)) {
       if (payload[key] !== void 0) {

@@ -16,6 +16,7 @@ interface CareerTrackSelectorProps {
   profile: Profile | null;
   onOpenVipPrompt: (track: CareerTrackInfo) => void;
   questionCounts?: Record<CareerCategory, number>;
+  tracks?: CareerTrackInfo[];
 }
 
 export const TRACK_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -31,6 +32,7 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
   profile,
   onOpenVipPrompt,
   questionCounts,
+  tracks = CAREER_TRACKS,
 }) => {
   const isVip = profile?.is_vip ?? false;
   const isAdmin = profile?.email?.toLowerCase().trim() === 'hungpv2172002@gmail.com';
@@ -68,14 +70,14 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
         ) : (
           <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full shrink-0">
             <Lock className="w-3 h-3 text-amber-500" />
-            3 ngành VIP
+            {tracks.filter(track => track.isVipOnly).length} ngành VIP
           </span>
         )}
       </div>
 
       {/* Grid danh sách 4 phân loại ngành nghề (2 cột gọn gàng trên di động) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-2.5 pt-1 w-full min-w-0">
-        {CAREER_TRACKS.map((track) => {
+        {tracks.map((track) => {
           const isSelected = selectedCategory === track.id;
           const isLocked = track.isVipOnly && !hasVipAccess;
           const IconComponent = TRACK_ICONS[track.icon] || MessageSquare;
