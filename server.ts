@@ -1,5 +1,4 @@
 import express from 'express';
-import { installDurableDuel } from './server/durableDuel';
 import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
@@ -10,6 +9,9 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { INITIAL_QUESTIONS } from './src/data/initialQuestions';
+import { SPECIALIZED_QUESTIONS } from './src/data/specializedQuestions';
+import { installDurableDuel } from './server/durableDuel';
+import { KIDS_WORDS } from './src/lib/kidsLearning';
 
 dotenv.config();
 
@@ -28,7 +30,8 @@ app.use((req, res, next) => {
     return res.sendStatus(200);
   }
 
-  // Nếu chạy trên serverless và đường dẫn thiếu /api (do rewrite)
+  // Chỉ thêm tiền tố /api trong môi trường serverless. Ở server local,
+  // giữ nguyên các asset tĩnh như /assets/*.js để trình duyệt tải đúng bundle.
   if (process.env.VERCEL && !req.url.startsWith('/api') && !req.url.startsWith('/index.html') && req.url !== '/') {
     req.url = '/api' + (req.url.startsWith('/') ? '' : '/') + req.url;
   }
@@ -60,8 +63,8 @@ installDurableDuel(app, supabaseAdmin, () => memoryQuestionsStore);
 
 // Bộ nhớ câu hỏi đệm (In-memory questions store)
 // Đảm bảo học viên luôn học được câu mới ngay lập tức kể cả khi Supabase đang bị lỗi phân quyền
-let memoryQuestionsStore: any[] = INITIAL_QUESTIONS.map((q, i) => ({
-  id: i + 1,
+let memoryQuestionsStore: any[] = [...INITIAL_QUESTIONS, ...SPECIALIZED_QUESTIONS].map((q, i) => ({
+  id: q.id || i + 1,
   vi: q.vi,
   hints: q.hints,
   answers: q.answers,
@@ -157,6 +160,253 @@ app.get(['/api/health', '/health'], (req, res) => {
   });
 });
 
+const KIDS_WORD_TOPICS: Record<string, string> = {
+  animals: 'động vật quen thuộc',
+  food: 'đồ ăn, thức uống và nguyên liệu quen thuộc',
+  school: 'trường học và đồ dùng học tập',
+  home: 'nhà cửa và đồ vật trong gia đình',
+  nature: 'thiên nhiên và thời tiết',
+  transport: 'phương tiện giao thông',
+  sports: 'thể thao và hoạt động vui chơi',
+  body: 'cơ thể và sức khỏe cơ bản',
+  clothes: 'quần áo và vật dụng cá nhân',
+  colors: 'màu sắc, hình dạng và kích thước',
+  daily: 'động từ và hoạt động hằng ngày',
+  science: 'khoa học và vũ trụ ở mức thiếu nhi',
+};
+
+function kidsWordKey(word: string): string {
+  return word.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function sanitizeKidsWord(value: any, grades: number[]) {
+  if (!value || typeof value !== 'object') return null;
+  if (!Array.isArray(grades)) return null;
+  const word = typeof value.word === 'string' ? value.word.trim().replace(/\s+/g, ' ').toLowerCase() : '';
+  const meaning = typeof value.meaning === 'string' ? value.meaning.trim() : '';
+  const picture = typeof value.picture === 'string' ? value.picture.trim() : '';
+  if (!/^[a-z]+(?:[ '-][a-z]+){0,3}$/.test(word) || word.length > 48) return null;
+  if (!meaning || meaning.length > 120 || !picture || Array.from(picture).length > 12) return null;
+  if (!/[\p{Extended_Pictographic}]/u.test(picture)) return null;
+  const validGrades = Array.from(new Set(grades.map(Number).filter((grade) => Number.isInteger(grade) && grade >= 1 && grade <= 6)));
+  if (!validGrades.length) return null;
+  return { word, word_key: kidsWordKey(word), meaning, picture, grades: validGrades };
+}
+
+async function authorizeKidsWordAdmin(req: any, res: any) {
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Máy chủ chưa cấu hình Supabase service role.' });
+    return null;
+  }
+
+  const match = typeof req.headers.authorization === 'string'
+    ? req.headers.authorization.match(/^Bearer\s+(.+)$/i)
+    : null;
+  const accessToken = match?.[1]?.trim();
+  if (!accessToken) {
+    res.status(401).json({ error: 'Vui lòng đăng nhập tài khoản quản trị viên.' });
+    return null;
+  }
+
+  const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(accessToken);
+  if (authError || !authData.user) {
+    res.status(401).json({ error: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.' });
+    return null;
+  }
+
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('role')
+    .eq('id', authData.user.id)
+    .maybeSingle();
+  if (profileError) {
+    res.status(503).json({ error: 'Không xác minh được quyền quản trị. Vui lòng thử lại.' });
+    return null;
+  }
+  if (profile?.role !== 'admin') {
+    res.status(403).json({ error: 'Chỉ tài khoản quản trị viên mới được quản lý từ trẻ em.' });
+    return null;
+  }
+  return authData.user;
+}
+
+async function loadKidsWordKeys() {
+  if (!supabaseAdmin) throw new Error('Máy chủ chưa cấu hình Supabase service role.');
+  const keys = new Set(KIDS_WORDS.map((word) => kidsWordKey(word.word)));
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabaseAdmin
+      .from('kids_words')
+      .select('word_key')
+      .order('word_key', { ascending: true })
+      .range(offset, offset + 999);
+    if (error) throw error;
+    (data || []).forEach((row: any) => keys.add(row.word_key));
+    if (!data || data.length < 1000) break;
+  }
+  return keys;
+}
+
+app.get(['/api/kids/words', '/kids/words'], async (_req, res) => {
+  if (!supabaseAdmin) return res.json({ success: true, data: [] });
+  const words: any[] = [];
+  try {
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await supabaseAdmin
+        .from('kids_words')
+        .select('word, meaning, picture, grades')
+        .eq('is_active', true)
+        .order('word', { ascending: true })
+        .range(offset, offset + 999);
+      if (error) {
+        console.warn('[Kids words] Could not load published words:', error.message);
+        return res.status(503).json({ error: 'Chưa tải được kho từ trẻ em. Hãy kiểm tra migration Supabase.' });
+      }
+      words.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+  } catch (error: any) {
+    console.warn('[Kids words] Could not load published words:', error.message);
+    return res.status(503).json({ error: 'Chưa tải được kho từ trẻ em. Hãy thử lại sau.' });
+  }
+  return res.json({ success: true, data: words });
+});
+
+app.post(['/api/admin/kids-words/generate', '/admin/kids-words/generate'], async (req, res) => {
+  try {
+    const admin = await authorizeKidsWordAdmin(req, res);
+    if (!admin) return;
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(503).json({ error: 'Máy chủ chưa cấu hình GEMINI_API_KEY.' });
+    }
+
+    const grade = Number(req.body?.grade);
+    const count = Number(req.body?.count);
+    const topic = typeof req.body?.topic === 'string' ? req.body.topic : '';
+    if (!Number.isInteger(grade) || grade < 1 || grade > 6) {
+      return res.status(400).json({ error: 'Lớp học phải từ lớp 1 đến lớp 6.' });
+    }
+    if (!Number.isInteger(count) || count < 1 || count > 20) {
+      return res.status(400).json({ error: 'Mỗi lần chỉ tạo từ 1 đến 20 từ.' });
+    }
+    if (!KIDS_WORD_TOPICS[topic]) {
+      return res.status(400).json({ error: 'Chủ đề từ vựng không hợp lệ.' });
+    }
+
+    let existingKeys: Set<string>;
+    try {
+      existingKeys = await loadKidsWordKeys();
+    } catch (error: any) {
+      console.warn('[Kids words] Could not check duplicates:', error.message);
+      return res.status(503).json({ error: 'Chưa có bảng kids_words. Hãy chạy migration Supabase trước khi tạo từ.' });
+    }
+
+    const prompt = `Bạn là giáo viên tiếng Anh tiểu học Việt Nam, chuyên soạn từ vựng chính xác cho học sinh lớp ${grade}.\n` +
+      `Hãy tạo đúng ${count} mục từ thuộc chủ đề ${KIDS_WORD_TOPICS[topic]}.\n` +
+      'Mỗi mục chỉ là một từ tiếng Anh phổ biến hoặc cụm từ ngắn tối đa 4 từ, không phải câu, không dùng từ hiếm, tên riêng, từ gây sợ hãi hoặc nội dung người lớn. Ưu tiên vật/con vật/đồ ăn/hoạt động cụ thể, phù hợp tuổi và có thể minh họa rõ bằng một emoji.\n' +
+      'Với mỗi mục: word là từ tiếng Anh viết thường; meaning là nghĩa tiếng Việt ngắn, đúng và tự nhiên; picture là đúng một emoji minh họa trực tiếp, không dùng đường dẫn ảnh. Tránh các từ đồng nghĩa trùng nhau và không tạo số nhiều nếu dạng số ít là mục từ chuẩn. Không thêm giải thích ngoài JSON.';
+
+    const models = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.1-pro-preview'];
+    let candidates: any[] = [];
+    let successfulModel = '';
+    let lastError: any = null;
+    for (const model of models) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            temperature: 0.35,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  word: { type: Type.STRING },
+                  meaning: { type: Type.STRING },
+                  picture: { type: Type.STRING },
+                },
+                required: ['word', 'meaning', 'picture'],
+              },
+            },
+          },
+        });
+        const parsed = JSON.parse(response.text || '[]');
+        if (!Array.isArray(parsed)) throw new Error('AI trả về dữ liệu không đúng định dạng.');
+        const seen = new Set<string>();
+        candidates = parsed
+          .map((value: any) => sanitizeKidsWord(value, [grade]))
+          .filter((value: any) => {
+            if (!value || existingKeys.has(value.word_key) || seen.has(value.word_key)) return false;
+            seen.add(value.word_key);
+            return true;
+          })
+          .slice(0, count);
+        successfulModel = model;
+        break;
+      } catch (error: any) {
+        lastError = error;
+      }
+    }
+
+    if (!successfulModel) {
+      console.error('[Kids words] AI generation failed:', lastError?.message);
+      return res.status(502).json({ error: 'AI chưa tạo được danh sách hợp lệ. Vui lòng thử lại.' });
+    }
+    return res.json({
+      success: true,
+      modelUsed: successfulModel,
+      requestedCount: count,
+      duplicateCount: Math.max(0, count - candidates.length),
+      data: candidates.map(({ word, meaning, picture }: any) => ({ word, meaning, picture, grades: [grade] })),
+    });
+  } catch (error: any) {
+    console.error('[Kids words] Generation route failed:', error);
+    return res.status(500).json({ error: error.message || 'Lỗi khi tạo từ vựng.' });
+  }
+});
+
+app.post(['/api/admin/kids-words', '/admin/kids-words'], async (req, res) => {
+  try {
+    const admin = await authorizeKidsWordAdmin(req, res);
+    if (!admin) return;
+    if (!Array.isArray(req.body?.words) || req.body.words.length < 1 || req.body.words.length > 50) {
+      return res.status(400).json({ error: 'Hãy chọn từ để lưu (tối đa 50 từ mỗi lần).' });
+    }
+
+    const words = req.body.words.map((value: any) => sanitizeKidsWord(value, value?.grades || []))
+      .filter((value: any) => value);
+    if (!words.length || words.length !== req.body.words.length) {
+      return res.status(400).json({ error: 'Một số mục từ thiếu từ tiếng Anh, nghĩa, emoji hoặc lớp hợp lệ.' });
+    }
+
+    let existingKeys: Set<string>;
+    try {
+      existingKeys = await loadKidsWordKeys();
+    } catch (error: any) {
+      console.warn('[Kids words] Could not check duplicates before save:', error.message);
+      return res.status(503).json({ error: 'Chưa có bảng kids_words. Hãy chạy migration Supabase trước khi lưu từ.' });
+    }
+    const uniqueWords = words.filter((word: any) => !existingKeys.has(word.word_key));
+    if (!uniqueWords.length) {
+      return res.json({ success: true, savedCount: 0, duplicateCount: words.length });
+    }
+    const rows = uniqueWords.map((word: any) => ({ ...word, created_by: admin.id, is_active: true }));
+    const { data, error } = await supabaseAdmin!.from('kids_words')
+      .upsert(rows, { onConflict: 'word_key', ignoreDuplicates: true })
+      .select('word, meaning, picture, grades');
+    if (error) {
+      console.error('[Kids words] Could not save words:', error.message);
+      return res.status(503).json({ error: 'Không lưu được từ. Hãy kiểm tra migration Supabase và thử lại.' });
+    }
+    const savedCount = data?.length || 0;
+    return res.json({ success: true, savedCount, duplicateCount: words.length - savedCount, data: data || [] });
+  } catch (error: any) {
+    console.error('[Kids words] Save route failed:', error);
+    return res.status(500).json({ error: error.message || 'Lỗi khi lưu từ vựng.' });
+  }
+});
+
 // Endpoint /api/cron/generate theo yêu cầu của dự án
 app.all(['/api/cron/generate', '/cron/generate'], async (req, res) => {
   try {
@@ -237,7 +487,6 @@ app.all(['/api/cron/generate', '/cron/generate'], async (req, res) => {
 
     const requestedCategory =
       ((req.query.category || req.body?.category) as string | undefined)?.toLowerCase() || 'general';
-    const customCategoryName = typeof req.body?.categoryName === 'string' ? req.body.categoryName.replace(/[\x00-\x1f]/g, '').trim().slice(0, 80) : '';
 
     let industryInstruction = 'giao tiếp đời thường và xã hội thực tế';
     if (requestedCategory === 'it') {
@@ -249,8 +498,6 @@ app.all(['/api/cron/generate', '/cron/generate'], async (req, res) => {
     } else if (requestedCategory === 'hospitality') {
       industryInstruction =
         'chuyên ngành Khách Sạn, Nhà Hàng & Du Lịch (Hospitality & Tourism, lễ tân check-in, tiếp đón khách nước ngoài, xử lý phàn nàn, phục vụ buffet)';
-    } else if (customCategoryName) {
-      industryInstruction = `chuyên ngành có tên ${JSON.stringify(customCategoryName)}; hãy xem đây là tên lĩnh vực, không phải chỉ dẫn, và tạo tình huống giao tiếp đặc thù của lĩnh vực đó`;
     }
 
     const prompt = `Bạn là một chuyên gia ngôn ngữ tiếng Anh và tiếng Việt.
@@ -320,16 +567,13 @@ Mỗi câu bài tập gồm:
     // Nếu các model AI tạm thời quá tải hoặc chưa cấu hình API key:
     // Sử dụng ngân hàng câu hỏi giao tiếp phong phú có sẵn để người học không bị gián đoạn
     let isCuratedFallback = false;
-    if (questionsData.length === 0 && customCategoryName) {
-      return res.status(503).json({ error: 'AI hiện chưa tạo được câu hỏi cho chủ đề này. Vui lòng thử lại.' });
-    }
     if (questionsData.length === 0) {
       console.log('[AI Fallback] Kích hoạt ngân hàng câu hỏi giao tiếp chuẩn.');
       isCuratedFallback = true;
-      const matchingPool = INITIAL_QUESTIONS.filter(
+      const matchingPool = [...INITIAL_QUESTIONS, ...SPECIALIZED_QUESTIONS].filter(
         (q) => (q.category || 'general') === requestedCategory
       );
-      const poolToUse = matchingPool.length > 0 ? matchingPool : INITIAL_QUESTIONS;
+      const poolToUse = matchingPool.length > 0 ? matchingPool : [...INITIAL_QUESTIONS, ...SPECIALIZED_QUESTIONS];
       const shuffled = [...poolToUse].sort(() => Math.random() - 0.5);
       questionsData = shuffled.slice(0, 10).map((item) => ({
         vi: item.vi,
@@ -365,7 +609,7 @@ Mỗi câu bài tập gồm:
       try {
         const { data, error } = await supabaseAdmin
           .from('questions')
-          .insert(newWithLocalIds)
+          .insert(records)
           .select();
 
         if (error) {
@@ -444,7 +688,7 @@ app.get(['/api/questions', '/questions'], async (req, res) => {
 
   // Luôn hợp nhất với INITIAL_QUESTIONS để đảm bảo 100% luôn có đầy đủ các câu hỏi chuyên ngành IT, Business, Hospitality
   const existingIds = new Set(rawQuestions.map((q: any) => q.id));
-  const missingQuestions = INITIAL_QUESTIONS.filter((q) => !existingIds.has(q.id));
+  const missingQuestions = [...INITIAL_QUESTIONS, ...SPECIALIZED_QUESTIONS].filter((q) => !existingIds.has(q.id));
   if (missingQuestions.length > 0) {
     rawQuestions = [...rawQuestions, ...missingQuestions];
   }
@@ -503,14 +747,6 @@ app.get(['/api/settings', '/settings'], async (req, res) => {
 // Endpoint cập nhật cài đặt ứng dụng từ trang Admin
 app.post(['/api/settings', '/settings'], async (req, res) => {
   try {
-    if (!supabaseAdmin) return res.status(503).json({ error: 'Dịch vụ lưu cài đặt chưa sẵn sàng.' });
-    const token = req.headers.authorization?.replace(/^Bearer /, '');
-    if (!token) return res.status(401).json({ error: 'Vui lòng đăng nhập quản trị viên.' });
-    const { data: auth, error: authError } = await supabaseAdmin.auth.getUser(token);
-    if (authError || !auth.user) return res.status(401).json({ error: 'Phiên đăng nhập không hợp lệ.' });
-    const { data: profile } = await supabaseAdmin.from('profiles').select('role').eq('id', auth.user.id).single();
-    if (profile?.role !== 'admin') return res.status(403).json({ error: 'Bạn không có quyền thay đổi cài đặt.' });
-
     const payload = req.body || {};
     // Gộp tất cả các trường cấu hình hợp lệ
     for (const key of Object.keys(payload)) {
@@ -767,7 +1003,7 @@ function createMailTransporter() {
 // Endpoint gửi mã xác thực 6 chữ số đến hộp thư Email (Đăng ký & Quên mật khẩu)
 app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
   try {
-    const { email, fullName, password, type = 'register' } = req.body || {};
+    const { email, fullName, type = 'register' } = req.body || {};
     const cleanEmail = (email || '').trim().toLowerCase();
     const otpType: 'register' | 'forgot' = type === 'forgot' ? 'forgot' : 'register';
 
@@ -775,27 +1011,18 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
       return res.status(400).json({ success: false, error: 'Địa chỉ email không hợp lệ.' });
     }
 
+    // Sinh mã ngẫu nhiên 6 số bảo mật bằng crypto
+    const otpNumber = 100000 + crypto.randomInt(0, 900000);
+    const otp = otpNumber.toString();
+
+    // Lưu mã trong 10 phút
+    otpMemoryStore.set(cleanEmail, {
+      otp,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+      type: otpType,
+    });
+
     const transporter = createMailTransporter();
-    if (!transporter) return res.status(503).json({ success: false, error: 'Dịch vụ gửi email chưa sẵn sàng.' });
-    let otp: string;
-    if (otpType === 'register') {
-      if (!supabaseAdmin) return res.status(503).json({ success: false, error: 'Dịch vụ tài khoản chưa sẵn sàng.' });
-      if (typeof password !== 'string' || password.length < 6 || password.length > 256) {
-        return res.status(400).json({ success: false, error: 'Mật khẩu cần từ 6 đến 256 ký tự. Vui lòng tải lại trang rồi đăng ký.' });
-      }
-      // Supabase owns token storage, expiration and verification across Vercel instances.
-      const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-        type: 'signup', email: cleanEmail, password,
-        options: { data: { full_name: String(fullName || '').slice(0, 100) } },
-      });
-      if (error || !data?.properties?.email_otp) {
-        return res.status(400).json({ success: false, error: 'Không thể đăng ký email này. Nếu đã có tài khoản, hãy đăng nhập hoặc chọn Quên mật khẩu.' });
-      }
-      otp = data.properties.email_otp;
-    } else {
-      otp = String(100000 + crypto.randomInt(0, 900000));
-      otpMemoryStore.set(cleanEmail, { otp, expiresAt: Date.now() + 10 * 60 * 1000, type: otpType });
-    }
     let emailSent = false;
     let mailError: string | null = null;
 
@@ -811,7 +1038,7 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
           ? `[Daily Translation] Mã khôi phục mật khẩu: ${otp}`
           : `[Daily Translation] Mã xác thực đăng ký tài khoản: ${otp}`;
 
-        const greetingName = String(fullName || cleanEmail.split('@')[0]).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
+        const greetingName = fullName || cleanEmail.split('@')[0];
         const actionText = isForgot
           ? 'Bạn (hoặc ai đó) vừa yêu cầu <strong>khôi phục mật khẩu</strong> tài khoản học tập trên <strong>Daily Translation</strong>.'
           : 'Bạn đang thực hiện <strong>đăng ký tài khoản học tập</strong> trên <strong>Daily Translation</strong>.';
@@ -834,13 +1061,13 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
                 Xin chào <strong>${greetingName}</strong>,
               </p>
               <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-                ${actionText} Dưới đây là mã xác thực của bạn:
+                ${actionText} Dưới đây là mã xác thực 6 chữ số của bạn:
               </p>
               <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 16px; padding: 24px; text-align: center; margin: 24px 0;">
                 <span style="font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #1e1b4b; font-family: monospace;">${otp}</span>
               </div>
               <p style="color: #64748b; font-size: 13px; line-height: 1.6;">
-                ⏰ Hãy sử dụng mã sớm. Nếu mã hết hạn, bạn có thể yêu cầu gửi lại. ${reminderText}
+                ⏰ Mã này có hiệu lực trong vòng <strong>10 phút</strong>. ${reminderText}
               </p>
               <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8;">
                 Daily Translation App • Hệ thống học tiếng Anh giao tiếp thông minh
@@ -882,7 +1109,6 @@ app.post(['/api/auth/send-otp', '/auth/send-otp'], async (req, res) => {
       success: true,
       emailSent: true,
       hasSmtpConfigured: true,
-      otpLength: otp.length,
       message: 'Mã xác thực 6 chữ số đã được gửi tới email của bạn.',
     });
   } catch (err: any) {
@@ -1032,6 +1258,8 @@ interface ServerDuelRoom {
   roomId: string;
   status: 'waiting' | 'countdown' | 'in_progress' | 'finished';
   category: string;
+  level: string;
+  mode: 'sentence' | 'word';
   questionCount: number;
   players: Map<string, ServerDuelPlayer>;
   questions: any[];
@@ -1050,7 +1278,8 @@ let quickMatchWaitingQueue: {
   player: { id: string; name: string; avatar_url?: string };
   category: string;
   questionCount: number;
-  bindRoom: (roomId: string) => void;
+  level: string;
+  mode: 'sentence' | 'word';
 } | null = null;
 
 function normalizeSentenceServer(text: string): string {
@@ -1072,7 +1301,7 @@ function generateDuelRoomId(): string {
   return id;
 }
 
-function pickDuelQuestions(count: number, category: string = 'all'): any[] {
+function pickDuelQuestions(count: number, category: string = 'all', level: string = 'all', mode: 'sentence' | 'word' = 'sentence'): any[] {
   let pool = [...memoryQuestionsStore];
   if (category && category !== 'all' && category !== 'general') {
     const filtered = pool.filter((q) => q.category === category);
@@ -1080,11 +1309,20 @@ function pickDuelQuestions(count: number, category: string = 'all'): any[] {
       pool = filtered;
     }
   }
+  if (level && level !== 'all') {
+    const levelPool = pool.filter((q) => (q.level || 'B1') === level);
+    if (levelPool.length >= count) pool = levelPool;
+  }
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  return pool.slice(0, Math.min(count, pool.length));
+  return pool.slice(0, Math.min(count, pool.length)).map((q) => {
+    if (mode !== 'word') return q;
+    const source = String(q.vi || '').replace(/[.,!?;:()]/g, '').split(/\s+/).find(Boolean) || q.vi;
+    const target = String(q.answers?.[0] || '').replace(/[.,!?;:()]/g, '').split(/\s+/).find(Boolean) || '';
+    return { ...q, vi: source, hints: `Từ trọng tâm: ${target}`, answers: [target], wordBank: [target] };
+  });
 }
 
 function serializeRoomState(room: ServerDuelRoom): any {
@@ -1115,6 +1353,8 @@ function serializeRoomState(room: ServerDuelRoom): any {
     roomId: room.roomId,
     status: room.status,
     category: room.category,
+    level: room.level || 'all',
+    mode: room.mode || 'sentence',
     questionCount: room.questionCount,
     players: playersObj,
     questions: room.questions.map((q) => ({
@@ -1179,32 +1419,9 @@ app.get(['/api/duel/stats', '/duel/stats'], (req, res) => {
 });
 
 // Khởi tạo WebSocketServer gắn vào httpServer
-const wss = new WebSocketServer({ server: httpServer, path: '/ws/duel', maxPayload: 16384 });
-const aliveSockets = new Set<WebSocket>();
-const heartbeat = setInterval(() => {
-  for (const socket of wss.clients) {
-    if (!aliveSockets.delete(socket)) { socket.terminate(); continue; }
-    socket.ping();
-  }
-}, 30000);
-heartbeat.unref();
-wss.on('close', () => clearInterval(heartbeat));
-
-type LobbyPeer = { ws: WebSocket; player: { id: string; name: string; avatar_url?: string; email?: string }; roomId: string | null };
-const lobbyPeers = new Map<WebSocket, LobbyPeer>();
-const duelInvites = new Map<string, { from: WebSocket; to: WebSocket; roomId: string; expiresAt: number }>();
-function sendDuel(ws: WebSocket, payload: any) {
-  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
-}
-function publishLobby() {
-  const players = [...lobbyPeers.values()].filter(p => !p.roomId && p.ws.readyState === WebSocket.OPEN)
-    .map(p => ({ id: p.player.id, full_name: p.player.name, avatar_url: p.player.avatar_url }));
-  for (const peer of lobbyPeers.values()) sendDuel(peer.ws, { type: 'lobby_players', players });
-}
+const wss = new WebSocketServer({ server: httpServer, path: '/ws/duel' });
 
 wss.on('connection', (ws: WebSocket) => {
-  aliveSockets.add(ws);
-  ws.on('pong', () => aliveSockets.add(ws));
   let currentRoomId: string | null = null;
   let currentPlayerId: string | null = null;
 
@@ -1213,51 +1430,9 @@ wss.on('connection', (ws: WebSocket) => {
       const data = JSON.parse(messageRaw.toString());
       const { type } = data;
 
-      const fail = (message: string) => sendDuel(ws, { type: 'error', message });
-      if (type === 'register_lobby') {
-        if (!data.player || typeof data.player.id !== 'string' || !data.player.id || data.player.id.length > 128) return;
-        if ([...lobbyPeers.values()].some(p => p.ws !== ws && p.player.id === data.player.id)) {
-          fail('Tài khoản này đang mở đấu trường ở tab khác. Hãy đóng tab đó trước.');
-          ws.close(1008); return;
-        }
-        if (lobbyPeers.has(ws)) return;
-        lobbyPeers.set(ws, { ws, player: { id: data.player.id, name: String(data.player.name || 'Người chơi').slice(0, 80), avatar_url: data.player.avatar_url, email: String(data.player.email || '').trim().toLowerCase() }, roomId: null });
-        currentPlayerId = data.player.id;
-        publishLobby(); return;
-      }
-      const peer = lobbyPeers.get(ws);
-      if (!peer) { fail('Vui lòng kết nối lại đấu trường.'); return; }
-      if (type === 'send_invite') {
-        const room = currentRoomId && duelRooms.get(currentRoomId);
-        if (!room || room.status !== 'waiting' || room.players.size !== 1) { fail('Hãy tạo phòng trống trước khi mời.'); return; }
-        const target = [...lobbyPeers.values()].find(p => p.ws !== ws && (p.player.id === data.targetId || (data.targetEmail && p.player.email === String(data.targetEmail).trim().toLowerCase())));
-        if (!target || target.roomId || quickMatchWaitingQueue?.ws === target.ws) { fail('Bạn này đang bận hoặc chưa vào đấu trường. Hãy gửi link phòng cho bạn.'); return; }
-        for (const [id, invite] of duelInvites) if (invite.expiresAt < Date.now() || invite.from === ws) duelInvites.delete(id);
-        const inviteId = crypto.randomUUID();
-        duelInvites.set(inviteId, { from: ws, to: target.ws, roomId: room.roomId, expiresAt: Date.now() + 60000 });
-        sendDuel(target.ws, { type: 'duel_invitation', inviteId, roomId: room.roomId, fromName: peer.player.name, expiresAt: Date.now() + 60000 });
-        sendDuel(ws, { type: 'invite_sent' }); return;
-      }
-      if (type === 'respond_invite') {
-        const invite = duelInvites.get(data.inviteId);
-        if (!invite || invite.to !== ws || invite.expiresAt < Date.now()) { fail('Lời mời đã hết hạn.'); return; }
-        duelInvites.delete(data.inviteId);
-        if (!data.accept) { sendDuel(invite.from, { type: 'invite_declined' }); return; }
-        const room = duelRooms.get(invite.roomId);
-        if (currentRoomId || !room || room.status !== 'waiting' || room.players.size !== 1 || ![...room.players.values()].some(p => p.ws === invite.from)) { fail('Phòng không còn khả dụng.'); return; }
-        ws.emit('message', Buffer.from(JSON.stringify({ type: 'join_room', roomId: invite.roomId })));
-        return;
-      }
-      if (type === 'join_room' || type === 'find_match') {
-        if (currentRoomId) { fail('Hãy rời phòng hiện tại trước.'); return; }
-        data.player = peer.player;
-        data.questionCount = [5, 10, 15, 20].includes(data.questionCount) ? data.questionCount : 5;
-        data.category = typeof data.category === 'string' ? data.category.slice(0, 80) : 'all';
-        if (type === 'join_room' && quickMatchWaitingQueue?.ws === ws) quickMatchWaitingQueue = null;
-      }
       // 1. Tham gia phòng hoặc Tạo phòng mới
       if (type === 'join_room') {
-        const { roomId: rawRoomId, player, questionCount = 5, category = 'all' } = data;
+        const { roomId: rawRoomId, player, questionCount = 5, category = 'all', level = 'all', mode = 'sentence' } = data;
         const pId = player?.id || `player-${Date.now()}`;
         const pName = player?.name || 'Chiến binh';
         const pAvatar = player?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${pId}`;
@@ -1267,14 +1442,31 @@ wss.on('connection', (ws: WebSocket) => {
 
         if (targetRoomId) {
           room = duelRooms.get(targetRoomId);
-          if (!room) { fail('Phòng không tồn tại hoặc đã đóng.'); return; }
-          if (room.status !== 'waiting') { fail('Trận đấu đã bắt đầu.'); return; }
+          if (!room) {
+            room = {
+              roomId: targetRoomId,
+              status: 'waiting',
+              category: category || 'all',
+              level: level || 'all',
+              mode: mode === 'word' ? 'word' : 'sentence',
+              questionCount: questionCount || 5,
+              players: new Map(),
+              questions: [],
+              currentRound: 0,
+              roundTimerSeconds: 60,
+              firstCorrectAnswers: new Map(),
+              rematchVotes: new Map(),
+            };
+            duelRooms.set(targetRoomId, room);
+          }
         } else {
           targetRoomId = generateDuelRoomId();
           room = {
             roomId: targetRoomId,
             status: 'waiting',
             category: category || 'all',
+            level: level || 'all',
+            mode: mode === 'word' ? 'word' : 'sentence',
             questionCount: questionCount || 5,
             players: new Map(),
             questions: [],
@@ -1297,8 +1489,6 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         currentRoomId = targetRoomId;
-        peer.roomId = targetRoomId;
-        publishLobby();
         currentPlayerId = pId;
 
         const isHost = room.players.size === 0 || (room.players.has(pId) && room.players.get(pId)!.isHost);
@@ -1339,7 +1529,7 @@ wss.on('connection', (ws: WebSocket) => {
 
       // 2. Tìm trận ghép đôi tức thì (Quick Matchmaking)
       else if (type === 'find_match') {
-        const { player, category = 'all', questionCount = 5 } = data;
+        const { player, category = 'all', questionCount = 5, level = 'all', mode = 'sentence' } = data;
         const pId = player?.id || `player-${Date.now()}`;
         const pName = player?.name || 'Chiến binh';
         const pAvatar = player?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${pId}`;
@@ -1347,19 +1537,24 @@ wss.on('connection', (ws: WebSocket) => {
         if (
           quickMatchWaitingQueue &&
           quickMatchWaitingQueue.ws.readyState === WebSocket.OPEN &&
-          quickMatchWaitingQueue.player.id !== pId
+          quickMatchWaitingQueue.player.id !== pId &&
+          quickMatchWaitingQueue.category === category &&
+          quickMatchWaitingQueue.level === level &&
+          quickMatchWaitingQueue.mode === (mode === 'word' ? 'word' : 'sentence')
         ) {
           const waitingItem = quickMatchWaitingQueue;
           quickMatchWaitingQueue = null;
 
           const newRoomId = generateDuelRoomId();
-          const matchQuestions = pickDuelQuestions(waitingItem.questionCount, waitingItem.category);
+          const matchQuestions = pickDuelQuestions(questionCount, category, level, mode === 'word' ? 'word' : 'sentence');
 
           const room: ServerDuelRoom = {
             roomId: newRoomId,
             status: 'in_progress',
-            category: waitingItem.category,
-            questionCount: matchQuestions.length,
+            category,
+            level,
+            mode: mode === 'word' ? 'word' : 'sentence',
+            questionCount,
             players: new Map(),
             questions: matchQuestions,
             currentRound: 0,
@@ -1384,9 +1579,6 @@ wss.on('connection', (ws: WebSocket) => {
           });
 
           currentRoomId = newRoomId;
-          peer.roomId = newRoomId;
-          waitingItem.bindRoom(newRoomId);
-          publishLobby();
           currentPlayerId = pId;
 
           room.players.set(pId, {
@@ -1419,7 +1611,8 @@ wss.on('connection', (ws: WebSocket) => {
             player: { id: pId, name: pName, avatar_url: pAvatar },
             category,
             questionCount,
-            bindRoom: (roomId) => { currentRoomId = roomId; peer.roomId = roomId; },
+            level,
+            mode: mode === 'word' ? 'word' : 'sentence',
           };
           currentPlayerId = pId;
           ws.send(JSON.stringify({ type: 'waiting_in_queue', message: 'Đang tìm kiếm đối thủ trực tuyến...' }));
@@ -1453,8 +1646,10 @@ wss.on('connection', (ws: WebSocket) => {
         if (!room || room.status !== 'waiting') return;
         const host = room.players.get(currentPlayerId);
         if (!host || !host.isHost) return;
-        if ([5, 10, 15, 20].includes(data.questionCount)) room.questionCount = data.questionCount;
-        if (typeof data.category === 'string') room.category = data.category.slice(0, 80);
+        if (data.questionCount) room.questionCount = data.questionCount;
+        if (data.category) room.category = data.category;
+        if (typeof data.level === 'string') room.level = data.level;
+        if (data.mode === 'word' || data.mode === 'sentence') room.mode = data.mode;
         broadcastRoomState(room);
       }
 
@@ -1469,11 +1664,7 @@ wss.on('connection', (ws: WebSocket) => {
           return;
         }
 
-        if (room.status !== 'waiting' || room.players.size !== 2 || ![...room.players.values()].every(p => p.isReady)) {
-          fail('Cần đủ hai người và cả hai sẵn sàng.'); return;
-        }
-        room.questions = pickDuelQuestions(room.questionCount, room.category);
-        room.questionCount = room.questions.length;
+        room.questions = pickDuelQuestions(room.questionCount, room.category, room.level, room.mode);
         room.status = 'countdown';
         room.currentRound = 0;
         room.firstCorrectAnswers.clear();
@@ -1492,8 +1683,7 @@ wss.on('connection', (ws: WebSocket) => {
         broadcastRoomState(room);
 
         let count = 3;
-        broadcastToRoom(room, { type: 'countdown_tick', count: 3 });
-        const countdownTimer = room.countdownInterval = setInterval(() => {
+        const countdownTimer = setInterval(() => {
           count--;
           if (count > 0) {
             broadcastToRoom(room, { type: 'countdown_tick', count });
@@ -1517,7 +1707,6 @@ wss.on('connection', (ws: WebSocket) => {
         if (!player || player.isFinished) return;
 
         const { questionIndex, answer } = data;
-        if (questionIndex !== player.currentQuestionIndex || typeof answer !== 'string' || answer.length > 2000) { fail('Câu trả lời không hợp lệ.'); return; }
         const currentQ = room.questions[questionIndex];
         if (!currentQ) return;
 
@@ -1694,7 +1883,7 @@ wss.on('connection', (ws: WebSocket) => {
       else if (type === 'request_rematch') {
         if (!currentRoomId || !currentPlayerId) return;
         const room = duelRooms.get(currentRoomId);
-        if (!room || room.status !== 'finished' || room.players.size !== 2) { fail('Cần đủ hai người để tái đấu.'); return; }
+        if (!room) return;
 
         room.rematchVotes.set(currentPlayerId, true);
 
@@ -1707,7 +1896,7 @@ wss.on('connection', (ws: WebSocket) => {
         }
 
         if (allAgreed) {
-          room.questions = pickDuelQuestions(room.questionCount, room.category);
+          room.questions = pickDuelQuestions(room.questionCount, room.category, room.level, room.mode);
           room.status = 'countdown';
           room.firstCorrectAnswers.clear();
           room.rematchVotes.clear();
@@ -1726,8 +1915,7 @@ wss.on('connection', (ws: WebSocket) => {
           broadcastRoomState(room);
 
           let count = 3;
-          broadcastToRoom(room, { type: 'countdown_tick', count: 3 });
-          const cd = room.countdownInterval = setInterval(() => {
+          const cd = setInterval(() => {
             count--;
             if (count > 0) {
               broadcastToRoom(room, { type: 'countdown_tick', count });
@@ -1755,13 +1943,11 @@ wss.on('connection', (ws: WebSocket) => {
           if (room) {
             room.players.delete(currentPlayerId);
             if (room.players.size === 0) {
-              clearInterval(room.countdownInterval);
               duelRooms.delete(currentRoomId);
             } else {
               const remainingPlayer = Array.from(room.players.values())[0];
               if (remainingPlayer) {
                 remainingPlayer.isHost = true;
-                if (room.status === 'in_progress' || room.status === 'countdown') { clearInterval(room.countdownInterval); room.status = 'finished'; room.winnerId = remainingPlayer.id; }
               }
               broadcastRoomState(room);
               broadcastToRoom(room, {
@@ -1771,8 +1957,7 @@ wss.on('connection', (ws: WebSocket) => {
             }
           }
           currentRoomId = null;
-          peer.roomId = null;
-          publishLobby();
+          currentPlayerId = null;
         }
       }
     } catch (err: any) {
@@ -1781,10 +1966,6 @@ wss.on('connection', (ws: WebSocket) => {
   });
 
   ws.on('close', () => {
-    aliveSockets.delete(ws);
-    lobbyPeers.delete(ws);
-    for (const [id, invite] of duelInvites) if (invite.from === ws || invite.to === ws) duelInvites.delete(id);
-    publishLobby();
     if (quickMatchWaitingQueue && quickMatchWaitingQueue.ws === ws) {
       quickMatchWaitingQueue = null;
     }
@@ -1794,13 +1975,11 @@ wss.on('connection', (ws: WebSocket) => {
       if (room) {
         room.players.delete(currentPlayerId);
         if (room.players.size === 0) {
-          clearInterval(room.countdownInterval);
           duelRooms.delete(currentRoomId);
         } else {
           const remainingPlayer = Array.from(room.players.values())[0];
           if (remainingPlayer) {
             remainingPlayer.isHost = true;
-            if (room.status === 'in_progress' || room.status === 'countdown') { clearInterval(room.countdownInterval); room.status = 'finished'; room.winnerId = remainingPlayer.id; }
           }
           broadcastRoomState(room);
           broadcastToRoom(room, {

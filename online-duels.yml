@@ -1,0 +1,32 @@
+name: Online duel transactions
+on:
+  pull_request:
+    paths: ['src/lib/duelClient.ts', 'src/components/DuelBattleView.tsx', 'supabase/migrations/*online_duels.sql', 'scripts/test-online-duels.mjs', '.github/workflows/online-duels.yml']
+  push:
+    branches: [feat/admin-custom-career-topics]
+    paths: ['supabase/migrations/*online_duels.sql', 'scripts/test-online-duels.mjs', '.github/workflows/online-duels.yml']
+permissions:
+  contents: read
+jobs:
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: duel_test_only
+          POSTGRES_DB: duel_test
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --prefix "$RUNNER_TEMP/duel-test" --no-package-lock --ignore-scripts pg@8.16.3
+      - name: Authenticated transactions and concurrent players
+        env:
+          DUEL_TEST_DATABASE_URL: postgresql://postgres:duel_test_only@localhost:5432/duel_test
+        run: PG_MODULE="$RUNNER_TEMP/duel-test/node_modules/pg/lib/index.js" node scripts/test-online-duels.mjs
+

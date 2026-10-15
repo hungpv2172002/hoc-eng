@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 420" role="img" aria-labelledby="title desc">
+  <title id="title">Học tiếng Anh mỗi ngày</title>
+  <desc id="desc">Minh họa quyển sách mở, thẻ từ vựng và bong bóng hội thoại.</desc>
+  <defs>
+    <linearGradient id="page" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#fff8ed"/>
+      <stop offset="1" stop-color="#e9f4ff"/>
+    </linearGradient>
+    <linearGradient id="cover" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#4f46e5"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="420" rx="36" fill="#eef5ff"/>
+  <circle cx="106" cy="86" r="42" fill="#fde68a" opacity=".8"/>
+  <circle cx="544" cy="92" r="54" fill="#c4b5fd" opacity=".65"/>
+  <path d="M134 275c61-38 119-44 186-13v94c-67-26-125-20-186 16z" fill="url(#page)" stroke="#b6c7de" stroke-width="7"/>
+  <path d="M506 275c-61-38-119-44-186-13v94c67-26 125-20 186 16z" fill="url(#page)" stroke="#b6c7de" stroke-width="7"/>
+  <path d="M320 264v97" stroke="#94a3b8" stroke-width="7" stroke-linecap="round"/>
+  <path d="M164 300c43-17 91-17 137 3M164 327c44-15 91-15 137 4M476 300c-43-17-91-17-137 3M476 327c-44-15-91-15-137 4" fill="none" stroke="#a5b4fc" stroke-width="7" stroke-linecap="round"/>
+  <rect x="228" y="83" width="184" height="103" rx="23" fill="url(#cover)" transform="rotate(-6 320 134)"/>
+  <path d="M268 119h105M268 145h76" stroke="#fff" stroke-width="12" stroke-linecap="round" opacity=".9"/>
+  <path d="M155 138c-18-34 12-70 50-57 20-30 70-17 72 22 42 0 54 59 15 77H188c-18 0-32-17-33-42z" fill="#fff" stroke="#6366f1" stroke-width="7"/>
+  <text x="183" y="134" fill="#312e81" font-family="Arial, sans-serif" font-size="22" font-weight="700">Hello!</text>
+  <path d="M470 166c-16-28 10-59 42-48 18-25 58-14 60 20 34 0 43 48 12 62H495c-15 0-25-13-25-34z" fill="#fff" stroke="#0ea5e9" stroke-width="7"/>
+  <text x="493" y="158" fill="#075985" font-family="Arial, sans-serif" font-size="18" font-weight="700">Learn</text>
+  <circle cx="99" cy="342" r="12" fill="#fb7185"/><circle cx="540" cy="337" r="12" fill="#34d399"/>
+</svg>
