@@ -1,5 +1,3 @@
-import { LearningChoice, LearningAudience } from './components/LearningChoice';
-import { KidsLearning } from './components/KidsLearning';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Profile, Question, AppSettings, CareerTrackInfo } from './types';
 import { INITIAL_QUESTIONS } from './data/initialQuestions';
@@ -21,6 +19,9 @@ import { Friend } from './types';
 import { getFriendsList } from './lib/friendsStorage';
 import { recordQuestionCompleted } from './lib/badgeSystem';
 import { playVictorySound } from './lib/soundFx';
+import { SPECIALIZED_QUESTIONS } from './data/specializedQuestions';
+import { LearningChoice, LearningAudience } from './components/LearningChoice';
+import { KidsLearning } from './components/KidsLearning';
 
 const DEFAULT_SETTINGS: AppSettings = {
   appName: 'Dịch Mỗi Ngày',
@@ -69,13 +70,16 @@ export default function App() {
     return null;
   });
   const [questions, setQuestions] = useState<Question[]>(() =>
-    getDailyQuestions(INITIAL_QUESTIONS)
+    getDailyQuestions([...INITIAL_QUESTIONS, ...SPECIALIZED_QUESTIONS])
   );
   const [todayCount, setTodayCount] = useState<number>(0);
+  // Chọn khu học lại sau mỗi lần tải trang để tránh trẻ em bị đưa thẳng vào
+  // khu người lớn (hoặc ngược lại) do lựa chọn cũ trong localStorage.
   const [learningAudience, setLearningAudience] = useState<LearningAudience | null>(null);
-  const [learningUserId, setLearningUserId] = useState<string | null>(null);
-  const chooseLearning = (value: LearningAudience) => { setLearningAudience(value); setLearningUserId(profile?.id || null); };
-  const needsLearningChoice = !learningAudience || (profile?.id || null) !== learningUserId;
+
+  const chooseLearning = (value: LearningAudience) => {
+    setLearningAudience(value);
+  };
 
   // Nhận mã phòng nếu mở qua liên kết thách đấu (?duel=DUEL-xxxx hoặc ?room=DUEL-xxxx)
   const [initialDuelRoomId] = useState<string | null>(() => {
@@ -316,7 +320,6 @@ export default function App() {
   useEffect(() => {
     initUserSession();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') { setProfile(null); setLearningAudience(null); setLearningUserId(null); }
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') setTimeout(() => initUserSession(), 0);
     });
     return () => subscription.unsubscribe();
@@ -331,7 +334,7 @@ export default function App() {
         if (res.ok) {
           const json = await res.json();
           if (json.success && Array.isArray(json.questions) && json.questions.length > 0) {
-            setQuestions(json.questions as Question[]);
+            setQuestions([...(json.questions as Question[]), ...SPECIALIZED_QUESTIONS]);
             return;
           }
         }
@@ -349,7 +352,7 @@ export default function App() {
 
           if (!error && data && data.length > 0) {
             // Đảo câu theo ngày
-            setQuestions(getDailyQuestions(data as Question[], todayDateString));
+            setQuestions([...getDailyQuestions(data as Question[], todayDateString), ...SPECIALIZED_QUESTIONS]);
             return;
           }
         } catch (e) {
@@ -358,7 +361,7 @@ export default function App() {
       }
 
       // Fallback câu mặc định đảo theo ngày
-      setQuestions(getDailyQuestions(INITIAL_QUESTIONS, todayDateString));
+      setQuestions(getDailyQuestions([...INITIAL_QUESTIONS, ...SPECIALIZED_QUESTIONS], todayDateString));
     }
     loadQuestions();
   }, [todayDateString]);
@@ -484,7 +487,6 @@ export default function App() {
 
 
   const handleSignOut = async () => {
-    setLearningAudience(null); setLearningUserId(null);
     if (isSupabaseConfigured) {
       try {
         await supabase.auth.signOut();
@@ -492,6 +494,7 @@ export default function App() {
     }
     localStorage.removeItem('translation_user_profile');
     setProfile(null);
+    setLearningAudience(null);
     setCurrentView('study');
     setToastMessage({ type: 'success', text: 'Đã đăng xuất thành công.' });
     setTimeout(() => setToastMessage(null), 3000);
@@ -510,6 +513,10 @@ export default function App() {
       localStorage.setItem('app_custom_settings', JSON.stringify(newSettings));
       localStorage.setItem('app_contact_settings', JSON.stringify({ contactEmail: newSettings.contactEmail, contactFacebook: newSettings.contactFacebook, contactTiktok: newSettings.contactTiktok }));
     } catch (e) {}
+    try {
+      const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(newSettings) });
+      if (!res.ok) throw new Error('Settings API unavailable');
+    } catch (err) { console.warn('Settings API unavailable; Supabase is the persistent source.', err); }
     setToastMessage({ type: 'success', text: 'Đã lưu cài đặt thành công!' });
     setTimeout(() => setToastMessage(null), 5000);
   };
@@ -590,8 +597,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Adult navigation is only mounted after the required choice. */}
-      {!needsLearningChoice && learningAudience === 'adult' && <Header
+      {/* HEADER */}
+      <Header
         profile={profile}
         todayCount={todayCount}
         currentView={currentView}
@@ -610,12 +617,15 @@ export default function App() {
         settings={settings}
         themeMode={themeMode}
         onToggleTheme={handleToggleTheme}
-      />}
+      />
 
       {/* MAIN CONTAINER */}
       <main className="app-container flex-1 px-2.5 sm:px-6 py-3 sm:py-8 min-w-0">
-        {!needsLearningChoice && <div className="mb-4 flex flex-wrap justify-between gap-2"><button onClick={() => setLearningAudience(null)} className="min-h-11 rounded-xl border border-indigo-200 bg-white dark:bg-slate-900 px-4 text-sm font-bold text-indigo-700 dark:text-indigo-300">⇄ Đổi khu vực học</button>{learningAudience === 'kids' && <button onClick={() => profile ? handleSignOut() : setIsAuthOpen(true)} className="min-h-11 rounded-xl border px-4 text-sm font-bold">{profile ? 'Đăng xuất' : 'Đăng nhập'}</button>}</div>}
-        {needsLearningChoice ? <LearningChoice signedIn={!!profile} onChoose={chooseLearning} onSignOut={handleSignOut} /> : learningAudience === 'kids' ? <KidsLearning /> : currentView === 'study' ? (
+        {!learningAudience ? (
+          <LearningChoice onChoose={chooseLearning} signedIn={Boolean(profile)} />
+        ) : learningAudience === 'kids' ? (
+          <KidsLearning onBack={() => chooseLearning('adult')} />
+        ) : currentView === 'study' ? (
           <StudyView
             questions={questions}
             profile={profile}
@@ -629,10 +639,12 @@ export default function App() {
             todayDateString={todayDateString}
             onOpenBattle={() => setCurrentView('battle')}
             onOpenDuel={() => setCurrentView('duel')}
+            onOpenKids={() => chooseLearning('kids')}
             customTracks={settings.customCareerTracks as CareerTrackInfo[] | undefined}
           />
         ) : currentView === 'duel' ? (
           <DuelBattleView
+            onOpenAuth={() => setIsAuthOpen(true)}
             profile={profile}
             onBackToStudy={() => setCurrentView('study')}
             initialRoomId={initialDuelRoomId}
@@ -647,7 +659,6 @@ export default function App() {
           />
         ) : (
           <AdminView
-            onQuestionAdded={(question) => setQuestions(prev => [...prev, question])}
             currentUser={profile}
             profiles={allProfiles}
             onToggleVip={handleToggleVip}
@@ -717,7 +728,6 @@ export default function App() {
         initialMode={authModalMode}
         onClose={() => setIsAuthOpen(false)}
         onLoginSuccess={(newProfile) => {
-          setLearningAudience(null); setLearningUserId(null);
           setProfile(newProfile);
           localStorage.setItem('translation_user_profile', JSON.stringify(newProfile));
           // Tự động thêm hoặc cập nhật trong allProfiles
@@ -769,3 +779,4 @@ export default function App() {
     </div>
   );
 }
+

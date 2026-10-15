@@ -3,7 +3,7 @@ import type { Express } from 'express';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 type Player = { id: string; name: string; avatar_url?: string; email?: string };
-type Session = { player: Player; seen: number; roomId?: string; queued?: { at: number; category: string; count: number }; events: any[]; seq: number; requests: string[] };
+type Session = { player: Player; seen: number; roomId?: string; queued?: { at: number; category: string; count: number; level: string; mode: 'sentence' | 'word' }; events: any[]; seq: number; requests: string[] };
 export type DuelStore = { sessions: Record<string, Session>; rooms: Record<string, any>; invites: Record<string, any> };
 export const emptyDuelStore = (): DuelStore => ({ sessions: {}, rooms: {}, invites: {} });
 const LEASE_MS = 60000;
@@ -41,8 +41,17 @@ function finish(r: any) {
 }
 function start(db: DuelStore, r: any, questions: any[], now: number) {
   let pool = questions.filter(q => r.category === 'all' || q.category === r.category);
+  if (r.level && r.level !== 'all') {
+    const levelPool = pool.filter(q => (q.level || 'B1') === r.level);
+    if (levelPool.length >= r.questionCount) pool = levelPool;
+  }
   if (pool.length < r.questionCount) pool = questions;
   r.questions = [...pool].sort(() => Math.random() - .5).slice(0, r.questionCount);
+  if (r.mode === 'word') r.questions = r.questions.map((q: any) => {
+    const vi = String(q.vi || '').replace(/[.,!?;:()]/g, '').split(/\s+/).find(Boolean) || q.vi;
+    const answer = String(q.answers?.[0] || '').replace(/[.,!?;:()]/g, '').split(/\s+/).find(Boolean) || '';
+    return { ...q, vi, hints: `Từ trọng tâm: ${answer}`, answers: [answer], wordBank: [answer] };
+  });
   if (!r.questions.length) throw Error('Chưa có câu hỏi để đấu.');
   r.questionCount = r.questions.length;
   r.status = 'countdown'; r.roundStartedAt = now + 3000; r.firstCorrectAnswers = {}; r.rematchVotes = {}; r.winnerId = null;
@@ -72,6 +81,8 @@ export function transition(db: DuelStore, key: string, cmd: any, now: number, qu
   const fail = (message: string) => { throw Error(message); };
   const count = [5,10,15,20].includes(cmd.questionCount) ? cmd.questionCount : 5;
   const category = typeof cmd.category === 'string' ? cmd.category.slice(0,80) : 'all';
+  const level = typeof cmd.level === 'string' ? cmd.level.slice(0,10) : 'all';
+  const mode = cmd.mode === 'word' ? 'word' : 'sentence';
   const join = (room: any) => {
     if (s.roomId || room.status !== 'waiting' || room.members.length >= 2) fail('Phòng đã đầy, đã bắt đầu hoặc bạn đang ở phòng khác.');
     delete s.queued; s.roomId = room.roomId;
@@ -80,7 +91,7 @@ export function transition(db: DuelStore, key: string, cmd: any, now: number, qu
   };
   const create = () => {
     const roomId = `DUEL-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-    const room = { roomId, members:[], players:{}, status:'waiting', questionCount:count, category, questions:[], currentRound:0, roundTimerSeconds:60, rematchVotes:{} };
+    const room = { roomId, members:[], players:{}, status:'waiting', questionCount:count, category, level, mode, questions:[], currentRound:0, roundTimerSeconds:60, rematchVotes:{} };
     db.rooms[roomId] = room; return room;
   };
   switch (cmd.type) {
@@ -93,9 +104,9 @@ export function transition(db: DuelStore, key: string, cmd: any, now: number, qu
     }
     case 'find_match': {
       if (s.roomId) fail('Hãy rời phòng hiện tại trước.');
-      const other = Object.entries(db.sessions).filter(([k,v]) => k !== key && v.queued && !v.roomId).sort((a,b) => a[1].queued!.at-b[1].queued!.at)[0];
-      if (!other) { s.queued = s.queued || {at:now, category, count}; emit({type:'waiting_in_queue'}); break; }
-      const [ok, os] = other; const room = create(); room.category=os.queued!.category; room.questionCount=os.queued!.count;
+      const other = Object.entries(db.sessions).filter(([k,v]) => k !== key && v.queued && !v.roomId && v.queued.category === category && v.queued.level === level && v.queued.mode === mode).sort((a,b) => a[1].queued!.at-b[1].queued!.at)[0];
+      if (!other) { s.queued = {at:now, category, count, level, mode}; emit({type:'waiting_in_queue'}); break; }
+      const [ok, os] = other; const room = create(); room.category=os.queued!.category; room.questionCount=os.queued!.count; room.level=os.queued!.level; room.mode=os.queued!.mode;
       room.members.push(ok); room.players[os.player.id]=participant(os.player,true); os.roomId=room.roomId; delete os.queued;
       push(os,{type:'joined_success',roomId:room.roomId,playerId:os.player.id,isHost:true});
       join(room); start(db,room,questions,now); broadcast(db,room,{type:'match_found',roomId:room.roomId}); break;
@@ -123,7 +134,7 @@ export function transition(db: DuelStore, key: string, cmd: any, now: number, qu
     }
     case 'toggle_ready': if(r?.status==='waiting' && p) p.isReady=!p.isReady; break;
     case 'update_room_settings':
-      if(r?.status==='waiting' && p?.isHost) {r.questionCount=count; r.category=category;} break;
+      if(r?.status==='waiting' && p?.isHost) {r.questionCount=count; r.category=category; r.level=level; r.mode=mode;} break;
     case 'start_game':
       if(!r || !p?.isHost || r.status!=='waiting' || r.members.length!==2 || !Object.values(r.players).every((v:any)=>v.isReady)) fail('Cần đủ hai người sẵn sàng và chủ phòng bắt đầu.');
       start(db,r,questions,now); break;
@@ -178,7 +189,6 @@ export function installDurableDuel(app: Express, admin: SupabaseClient | null, q
         const bearer=req.headers.authorization?.replace(/^Bearer /,'');
         let user:any=null;
         if(bearer) { const result=await admin.auth.getUser(bearer); if(result.error) return res.status(401).json({error:'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.'}); user=result.data.user; }
-        identity={id:user?.id || `guest-${key.slice(0,24)}`, name:String(cmd.player?.name||'Người chơi').slice(0,80), avatar_url:typeof cmd.player?.avatar_url==='string'?cmd.player.avatar_url.slice(0,500):undefined,email:user?.email?.toLowerCase()};
       }
       for(let attempt=0;attempt<10;attempt++) {
         const {data:row,error}=await admin.from('duel_state_store').select('version,state').eq('id',1).single();
@@ -194,3 +204,4 @@ export function installDurableDuel(app: Express, admin: SupabaseClient | null, q
     } catch(error:any) { return res.status(400).json({error:error.message||'Không xử lý được trận đấu.'}); }
   });
 }
+

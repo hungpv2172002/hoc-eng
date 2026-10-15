@@ -1,4 +1,5 @@
 import { Question } from '../types';
+import { ADULT_QUESTION_BANK } from './adultQuestionBank';
 
 export const INITIAL_QUESTIONS: Question[] = [
   {
@@ -1021,6 +1022,5 @@ export const INITIAL_QUESTIONS: Question[] = [
     category: 'hospitality',
     level: 'C1',
   },
+  ...ADULT_QUESTION_BANK,
 ];
-
-

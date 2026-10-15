@@ -1,5 +1,5 @@
-import { HttpDuelConnection } from '../lib/httpDuelConnection';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { HttpDuelConnection } from '../lib/httpDuelConnection';
 import {
   Swords,
   Users,
@@ -29,6 +29,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { OnlineDuelPlayer, DuelInvitation } from '../lib/duelClient';
 import {
   Profile,
   DuelRoomState,
@@ -38,6 +39,8 @@ import {
   CareerCategory,
   CAREER_TRACKS,
   Friend,
+  CEFRLevel,
+  CEFR_LEVELS,
 } from '../types';
 import { getFriendsList, addFriendByEmail, removeFriend } from '../lib/friendsStorage';
 import { recordDuelWin } from '../lib/badgeSystem';
@@ -55,6 +58,7 @@ import {
 interface DuelBattleViewProps {
   profile: Profile | null;
   onBackToStudy: () => void;
+  onOpenAuth?: () => void;
   initialRoomId?: string | null;
   allProfiles?: Profile[];
   friends?: Friend[];
@@ -91,6 +95,7 @@ const DISTRACTOR_WORDS = [
 export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   profile,
   onBackToStudy,
+  onOpenAuth,
   initialRoomId,
   allProfiles = [],
   friends: propFriends,
@@ -168,19 +173,16 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   const playerAvatar =
     profile?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${playerId}`;
 
-  const [onlinePlayers, setOnlinePlayers] = useState<Array<{ id: string; full_name: string; avatar_url?: string }>>([]);
-  const [invitation, setInvitation] = useState<{ inviteId: string; fromName: string; expiresAt: number } | null>(null);
-  const pendingInvite = useRef<{ targetId?: string; targetEmail?: string } | null>(null);
-  const finishedRoom = useRef<string | null>(null);
-  const messageHandler = useRef<(data: any) => void>(() => {});
-  useEffect(() => {
-    if (!invitation) return;
-    const timer = setTimeout(() => setInvitation(null), Math.max(0, invitation.expiresAt - Date.now()));
-    return () => clearTimeout(timer);
-  }, [invitation]);
-
   // 2. Trạng thái kết nối WebSocket
-  const wsRef = useRef<WebSocket | HttpDuelConnection | null>(null);
+  const wsRef = useRef<HttpDuelConnection | WebSocket | null>(null);
+  const messageRef = useRef<(data: any) => void>(() => {});
+  const recordedMatches = useRef(new Set<string>());
+  const [onlinePlayers, setOnlinePlayers] = useState<OnlineDuelPlayer[]>([]);
+  const [invitations, setInvitations] = useState<DuelInvitation[]>([]);
+  const pendingInviteRef = useRef<{ targetId?: string; targetEmail?: string; category: string; questionCount: number; level: CEFRLevel; mode: 'sentence' | 'word' } | null>(null);
+  const [serverOffset, setServerOffset] = useState(0);
+  const [clock, setClock] = useState(Date.now());
+  useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 1000); return () => clearInterval(timer); }, []);
   const [connectionStatus, setConnectionStatus] = useState<
     'connecting' | 'connected' | 'disconnected' | 'error'
   >('connecting');
@@ -200,6 +202,8 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   // Cấu hình khi tạo phòng (Chủ phòng)
   const [selectedQuestionCount, setSelectedQuestionCount] = useState<number>(5);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedLevel, setSelectedLevel] = useState<CEFRLevel>('all');
+  const [duelMode, setDuelMode] = useState<'sentence' | 'word'>('sentence');
 
   // 5. Trạng thái Đếm ngược 3... 2... 1...
   const [countdown, setCountdown] = useState<number | null>(null);
@@ -229,104 +233,62 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Gửi thông điệp qua WebSocket
+  // Use polling by default so rooms survive serverless instance changes; WebSocket remains available for local development.
   const sendWs = useCallback((payload: any) => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(payload));
-      return true;
-    }
-    setFloatingAlert('Chưa kết nối máy chủ đấu. Hãy kết nối lại.');
-    return false;
+    const connection = wsRef.current;
+    if (connection && connection.readyState === WebSocket.OPEN) connection.send(JSON.stringify(payload));
+    else setFloatingAlert('Chưa kết nối máy chủ đấu. Hãy kết nối lại.');
   }, []);
-
-  // Khởi tạo kết nối WebSocket
   const connectWs = useCallback(() => {
     try {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      wsRef.current?.close();
+      if (!profile?.id) return;
       setConnectionStatus('connecting');
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = (import.meta as any).env.VITE_DUEL_WS_URL || `${protocol}//${window.location.host}/ws/duel`;
-      const ws = (import.meta as any).env.VITE_DUEL_WS_URL
-        ? new WebSocket(wsUrl)
-        : new HttpDuelConnection(playerId);
-
-      ws.onopen = () => {
+      const connection: any = (import.meta as any).env.VITE_DUEL_WS_URL ? new WebSocket(wsUrl) : new HttpDuelConnection(playerId);
+      connection.onopen = () => {
         setConnectionStatus('connected');
-        ws.send(JSON.stringify({ type: 'register_lobby', player: { id: playerId, name: playerName, avatar_url: playerAvatar, email: profile?.email } }));
-        // Nếu có initialRoomId từ URL param (?duel=DUEL-xxxx)
-        if (initialRoomId) {
-          ws.send(
-            JSON.stringify({
-              type: 'join_room',
-              roomId: initialRoomId.toUpperCase().trim(),
-              player: {
-                id: playerId,
-                name: playerName,
-                avatar_url: playerAvatar,
-              },
-            })
-          );
-        }
+        connection.send(JSON.stringify({ type: 'register_lobby', player: { id: playerId, name: playerName, avatar_url: playerAvatar, email: profile?.email } }));
+        if (initialRoomId) connection.send(JSON.stringify({ type: 'join_room', roomId: initialRoomId.toUpperCase().trim(), player: { id: playerId, name: playerName, avatar_url: playerAvatar } }));
       };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          messageHandler.current(data);
-        } catch (e) {
-          console.error('[Duel WS Message Parse Error]', e);
-        }
-      };
-
-      ws.onclose = () => {
-        if (wsRef.current !== ws) return;
-        setConnectionStatus('disconnected');
-        setIsSearchingMatch(false);
-        setIsSubmitting(false);
-        setCountdown(null);
-        setRoomState(null);
-        setOnlinePlayers([]);
-        setInvitation(null);
-        pendingInvite.current = null;
-      };
-
-      ws.onerror = () => {
-        if (wsRef.current === ws) setConnectionStatus('error');
-      };
-
-      wsRef.current = ws;
-    } catch (e) {
-      setConnectionStatus('error');
-    }
+      connection.onmessage = (event: any) => { try { messageRef.current(JSON.parse(event.data)); } catch {} };
+      connection.onclose = () => { if (wsRef.current === connection) { setConnectionStatus('disconnected'); setIsSearchingMatch(false); setRoomState(null); setCountdown(null); } };
+      connection.onerror = () => { if (wsRef.current === connection) setConnectionStatus('error'); };
+      wsRef.current = connection;
+    } catch { setConnectionStatus('error'); }
   }, [initialRoomId, playerId, playerName, playerAvatar, profile?.email]);
 
   // Xử lý các sự kiện từ Server
   const handleServerMessage = (data: any) => {
     const { type } = data;
 
-    if (type === 'lobby_players') {
-      setOnlinePlayers(data.players.filter((p: any) => p.id !== playerId));
+    if (type === 'lobby_state') {
+      setOnlinePlayers(data.players || []);
+      setInvitations(data.invitations || []);
     } else if (type === 'duel_invitation') {
-      setInvitation(data);
+      setInvitations((previous) => [...previous.filter((invite) => invite.id !== data.inviteId), { id: data.inviteId, roomId: data.roomId, senderName: data.fromName }]);
     } else if (type === 'invite_sent' || type === 'invite_declined') {
-      setFloatingAlert(type === 'invite_sent' ? 'Đã gửi lời mời. Đang chờ bạn chấp nhận.' : 'Bạn đã từ chối lời mời. Bạn có thể gửi link phòng hoặc mời người khác.');
+      setFloatingAlert(type === 'invite_sent' ? 'Đã gửi lời mời thách đấu.' : 'Lời mời đã bị từ chối.');
+      setTimeout(() => setFloatingAlert(null), 2500);
+    } else if (type === 'room_cleared') {
+      setRoomState(null);
+      setCountdown(null);
     } else if (type === 'joined_success') {
-      setInvitation(null);
-      setIsSearchingMatch(false);
-      finishedRoom.current = null;
-      if (pendingInvite.current) {
-        sendWs({ type: 'send_invite', ...pendingInvite.current });
-        pendingInvite.current = null;
-      }
       setMyPlayerId(data.playerId);
       setIsHost(data.isHost);
       setFloatingAlert(`Đã tham gia phòng thi đấu ${data.roomId}!`);
+      if (pendingInviteRef.current) {
+        const pending = pendingInviteRef.current;
+        pendingInviteRef.current = null;
+        setTimeout(() => sendWs({ type: 'send_invite', ...pending }), 0);
+      }
       setTimeout(() => setFloatingAlert(null), 3000);
     } else if (type === 'room_state') {
       const state: DuelRoomState = data.state;
       setRoomState(state);
+      setServerOffset(data.serverNow - Date.now());
+      if (state.status !== 'countdown') setCountdown(null);
 
       // Cập nhật lại quyền Host nếu thay đổi
       if (state && state.players[myPlayerId]) {
@@ -335,11 +297,14 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
 
       // Nếu trạng thái là countdown
       if (state.status === 'countdown') {
-        finishedRoom.current = null;
         // Đồng bộ đếm ngược
-      } else if (state.status === 'finished' && finishedRoom.current !== state.roomId) {
-        finishedRoom.current = state.roomId;
-        setCountdown(null);
+      } else if (state.status === 'finished' && state.matchId && !recordedMatches.current.has(state.matchId)) {
+        recordedMatches.current.add(state.matchId);
+        const recordedKey = 'duel-result:' + myPlayerId + ':' + state.matchId;
+        try {
+          if (sessionStorage.getItem(recordedKey)) return;
+          sessionStorage.setItem(recordedKey, '1');
+        } catch { /* session storage can be disabled */ }
         // Kích hoạt pháo hoa nếu mình là người thắng
         if (state.winnerId === myPlayerId) {
           try {
@@ -375,7 +340,6 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
       playCriticalSound();
     } else if (type === 'game_started') {
       setCountdown(null);
-      finishedRoom.current = null;
       playSlashSound();
       setFloatingAlert('⚔️ TRANH TÀI BẮT ĐẦU! HÃY DỊCH THẬT NHANH!');
       setTimeout(() => setFloatingAlert(null), 2500);
@@ -441,15 +405,13 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
       playCriticalSound();
       setFloatingAlert('🔥 Đối thủ vừa gửi lời mời TÁI ĐẤU! Bấm Tái Đấu để chấp nhận!');
     } else if (type === 'error') {
-      setIsSearchingMatch(false);
-      pendingInvite.current = null;
       setIsSubmitting(false);
       setFloatingAlert(`⚠️ ${data.message || 'Có lỗi xảy ra!'}`);
       setTimeout(() => setFloatingAlert(null), 4000);
     }
   };
 
-  messageHandler.current = handleServerMessage;
+  messageRef.current = handleServerMessage;
 
   useEffect(() => {
     connectWs();
@@ -475,7 +437,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   const handleTypingChange = (text: string) => {
     setUserSentence(text);
     const now = Date.now();
-    if (now - lastTypingSentRef.current > 300) {
+    if (now - lastTypingSentRef.current > 1500) {
       lastTypingSentRef.current = now;
       sendWs({
         type: 'typing',
@@ -498,14 +460,16 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   const currentQIndex = myPlayer?.currentQuestionIndex ?? 0;
   const currentQ: DuelQuestionItem | undefined = roomState?.questions[currentQIndex];
 
+  useEffect(() => {
+    setAssembledTokens([]);
+    setUserSentence('');
+    setIsSubmitting(false);
+  }, [roomState?.matchId, currentQIndex]);
+
   // Danh sách từ vựng trong khay từ của câu hỏi hiện tại (kèm từ nhiễu)
   const availableBankTokens = useMemo(() => {
-    if (!currentQ || !currentQ.answers || currentQ.answers.length === 0) return [];
-    const baseSentence = currentQ.answers[0] || '';
-    const cleanWords = baseSentence
-      .replace(/[.,!?;:()"]/g, '')
-      .split(/\s+/)
-      .filter(Boolean);
+    const cleanWords = currentQ?.wordBank || [];
+    if (!currentQ || !cleanWords.length) return [];
 
     // Thêm 2-3 từ gây nhiễu
     const distractors = DISTRACTOR_WORDS.filter((w) => !cleanWords.includes(w)).slice(0, 3);
@@ -553,7 +517,6 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
     playPlayerHurtSound();
     sendWs({
       type: 'skip_question',
-      questionIndex: currentQIndex,
     });
     setAssembledTokens([]);
     setUserSentence('');
@@ -578,12 +541,6 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
     }, 2500);
   };
 
-  const challengePlayer = (targetId?: string, targetEmail?: string) => {
-    if (connectionStatus !== 'connected') return;
-    pendingInvite.current = { targetId, targetEmail };
-    handleCreateRoom(selectedCategory, selectedQuestionCount);
-  };
-
   // Tạo phòng mới
   const handleCreateRoom = (category: string = 'all', count: number = 5) => {
     sendWs({
@@ -591,12 +548,25 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
       roomId: '', // Để trống thì server tự sinh DUEL-xxxx
       questionCount: count,
       category,
+      level: selectedLevel,
+      mode: duelMode,
       player: {
         id: playerId,
         name: playerName,
         avatar_url: playerAvatar,
       },
     });
+  };
+
+  const handleInvitePlayer = (target: { targetId?: string; targetEmail?: string }) => {
+    const invite = { ...target, category: selectedCategory, questionCount: selectedQuestionCount, level: selectedLevel, mode: duelMode as 'sentence' | 'word' };
+    if (roomState?.status === 'waiting' && isHost) {
+      sendWs({ type: 'send_invite', ...invite });
+      return;
+    }
+    pendingInviteRef.current = invite;
+    handleCreateRoom(selectedCategory, selectedQuestionCount);
+    setFloatingAlert('Đang tạo phòng riêng để gửi lời mời cho bạn...');
   };
 
   // Tham gia phòng bằng mã
@@ -610,17 +580,19 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
         name: playerName,
         avatar_url: playerAvatar,
       },
+      level: selectedLevel,
+      mode: duelMode,
     });
   };
 
   // Tìm trận ngẫu nhiên
   const handleFindMatch = () => {
-    if (connectionStatus !== 'connected') return;
-    setIsSearchingMatch(true);
     sendWs({
       type: 'find_match',
       category: selectedCategory,
       questionCount: selectedQuestionCount,
+      level: selectedLevel,
+      mode: duelMode,
       player: {
         id: playerId,
         name: playerName,
@@ -631,7 +603,6 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
 
   // Hủy tìm trận ngẫu nhiên
   const handleCancelFindMatch = () => {
-    setIsSearchingMatch(false);
     sendWs({
       type: 'cancel_find_match',
     });
@@ -667,18 +638,25 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
     sendWs({
       type: 'leave_room',
     });
-    setRoomState(null);
     setIsSearchingMatch(false);
     setAssembledTokens([]);
     setUserSentence('');
     setAnswerFeedback(null);
   };
 
+  const handleBackToStudy = async () => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'leave_room' }));
+      wsRef.current.close();
+    }
+    onBackToStudy();
+  };
+
   // Sao chép link mời bạn bè
-  const handleCopyInviteLink = () => {
+  const handleCopyInviteLink = async () => {
     if (!roomState) return;
     const url = `${window.location.origin}${window.location.pathname}?duel=${roomState.roomId}`;
-    navigator.clipboard.writeText(url);
+    try { await navigator.clipboard.writeText(url); } catch { setFloatingAlert('Không thể sao chép. Hãy gửi mã phòng cho bạn bè.'); return; }
     setCopiedLink(true);
     setFloatingAlert('Đã sao chép link mời thách đấu! Hãy gửi cho bạn của bạn!');
     setTimeout(() => {
@@ -688,9 +666,9 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   };
 
   // Sao chép mã phòng
-  const handleCopyRoomCode = () => {
+  const handleCopyRoomCode = async () => {
     if (!roomState) return;
-    navigator.clipboard.writeText(roomState.roomId);
+    try { await navigator.clipboard.writeText(roomState.roomId); } catch { setFloatingAlert('Không thể sao chép. Hãy ghi lại mã phòng đang hiển thị.'); return; }
     setCopiedCode(true);
     setFloatingAlert(`Đã sao chép mã phòng: ${roomState.roomId}!`);
     setTimeout(() => {
@@ -707,13 +685,31 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
       type: 'update_room_settings',
       questionCount: newCount,
       category: newCat,
+      level: selectedLevel,
+      mode: duelMode,
     });
   };
 
   // =========================================================================
   // RENDER 1: MÀN HÌNH ĐẾM NGƯỢC (3... 2... 1... CHIẾN!)
   // =========================================================================
-  if (countdown !== null && countdown > 0) {
+  if (!profile) return (
+    <div className="max-w-xl mx-auto rounded-3xl p-8 bg-white dark:bg-slate-900 text-center space-y-4">
+      <Swords className="w-12 h-12 mx-auto text-indigo-500" />
+      <h2 className="text-2xl font-bold">Đăng nhập để thi đấu 1vs1</h2>
+      <p>Hai người chơi dùng tài khoản riêng. Bạn có thể mời bạn bè hoặc tìm đối thủ đang chờ.</p>
+      <button onClick={onOpenAuth || onBackToStudy} className="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold">Đăng nhập</button>
+      <button onClick={handleBackToStudy} className="block mx-auto p-2">Quay lại học</button>
+    </div>
+  );
+
+  const connectionNotice = connectionStatus !== 'connected' ? (
+    <div role="status" className="rounded-xl p-3 bg-amber-100 text-amber-950 text-sm">
+      {connectionStatus === 'connecting' ? 'Đang kết nối...' : 'Kết nối gián đoạn. Đang thử lại; giữ trang mở để khôi phục trận.'}
+    </div>
+  ) : null;
+
+  if (countdown !== null && countdown > 0 && roomState?.status === 'countdown') {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/90 backdrop-blur-md animate-in fade-in p-4 text-center">
         <div className="space-y-6 max-w-md w-full">
@@ -770,14 +766,6 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   if (!roomState || roomState.status === 'waiting') {
     return (
       <div className="w-full mx-auto space-y-4 sm:space-y-6 overflow-x-clip animate-in fade-in">
-        {invitation && (
-          <div role="alert" className="rounded-2xl border border-indigo-400 bg-indigo-50 dark:bg-slate-800 p-4 space-y-3">
-            <p className="font-bold">{invitation.fromName} mời bạn đấu 1vs1 (lời mời có hiệu lực 60 giây).</p>
-            <button className="rounded-xl bg-indigo-600 text-white px-4 py-2 mr-3" onClick={() => { sendWs({ type: 'respond_invite', inviteId: invitation.inviteId, accept: true }); setInvitation(null); }}>Chấp nhận</button>
-            <button className="rounded-xl border px-4 py-2" onClick={() => { sendWs({ type: 'respond_invite', inviteId: invitation.inviteId, accept: false }); setInvitation(null); }}>Từ chối</button>
-          </div>
-        )}
-
         {/* Floating Notification */}
         {floatingAlert && (
           <div className="fixed top-4 right-4 z-50 animate-in fade-in slide-in-from-top-4 max-w-sm">
@@ -792,7 +780,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
         <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 transition-colors">
           <div className="flex items-center gap-3">
             <button
-              onClick={onBackToStudy}
+              onClick={handleBackToStudy}
               className="p-2 sm:p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors cursor-pointer shrink-0"
               title="Trở về phòng học"
             >
@@ -834,11 +822,16 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
           </div>
         </div>
 
-        {(connectionStatus === 'error' || connectionStatus === 'disconnected') && (
-          <div role="alert" className="rounded-xl border border-amber-400 p-4 text-sm">
-            <p>Không kết nối được máy chủ đấu. Vui lòng thử lại.</p>
-            <button className="mt-2 rounded-lg bg-indigo-600 text-white px-4 py-2" onClick={connectWs}>Kết nối lại</button>
-          </div>
+        {connectionNotice}
+        {!roomState && invitations.length > 0 && (
+          <section aria-label="Lời mời thách đấu" className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950 space-y-3">
+            <h2 className="text-lg font-bold">Lời mời thách đấu</h2>
+            {invitations.map(invite => <div key={invite.id} className="flex flex-wrap items-center gap-3">
+              <p className="flex-1 min-w-0 break-words">{invite.senderName} mời bạn thi đấu</p>
+              <button className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold" onClick={() => { sendWs({type: 'respond_invite', inviteId: invite.id, accept: true}); setInvitations((previous) => previous.filter((item) => item.id !== invite.id)); }}>Chấp nhận</button>
+              <button className="p-2" onClick={() => { sendWs({type: 'respond_invite', inviteId: invite.id, accept: false}); setInvitations((previous) => previous.filter((item) => item.id !== invite.id)); }}>Từ chối</button>
+            </div>)}
+          </section>
         )}
         {/* NẾU ĐÃ Ở TRONG PHÒNG CHỜ (ROOM LOBBY) */}
         {roomState && roomState.status === 'waiting' ? (
@@ -849,7 +842,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
                 <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
                   Mã phòng thách đấu
                 </span>
-                <div className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-widest mt-0.5">
+                <div className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white break-all mt-0.5">
                   {roomState.roomId}
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
@@ -903,7 +896,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
                   </span>
                   <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 mt-1">
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Đã sẵn sàng</span>
+                    <span>{(myPlayer?.isHost ? myPlayer : opponent)?.isReady ? 'Đã sẵn sàng' : 'Chưa sẵn sàng'}</span>
                   </span>
                 </div>
               </div>
@@ -1021,8 +1014,8 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
                 Rời phòng
               </button>
 
-              <div className="flex items-center gap-3 w-full sm:w-auto">
-                {!isHost && (
+              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                {(
                   <button
                     onClick={handleToggleReady}
                     className={`flex-1 sm:flex-initial px-5 py-2.5 rounded-xl font-bold text-xs transition-all shadow-md cursor-pointer ${
@@ -1038,7 +1031,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
                 {isHost && (
                   <button
                     onClick={handleStartGame}
-                    disabled={!opponent}
+                    disabled={!opponent?.isReady || !myPlayer?.isReady}
                     className="flex-1 sm:flex-initial px-7 py-3 rounded-2xl bg-gradient-to-r from-rose-500 via-indigo-600 to-amber-500 hover:brightness-110 text-white font-black text-sm transition-all shadow-lg shadow-indigo-200 dark:shadow-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     <Swords className="w-4 h-4" />
@@ -1052,7 +1045,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
           /* NẾU CHƯA VÀO PHÒNG: CHỌN CHẾ ĐỘ THÁCH ĐẤU */
           <div className="space-y-4">
             {/* Tabs chọn hình thức giao đấu */}
-            <div className="flex rounded-2xl bg-slate-100 dark:bg-slate-800/80 p-1 border border-slate-200 dark:border-slate-700 text-xs font-bold">
+            <div className="grid grid-cols-1 sm:grid-cols-3 rounded-2xl bg-slate-100 dark:bg-slate-800/80 p-1 border border-slate-200 dark:border-slate-700 text-xs font-bold">
               <button
                 onClick={() => setLobbyTab('friends')}
                 className={`flex-1 py-2 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
@@ -1088,6 +1081,20 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
                 <Crown className="w-3.5 h-3.5" />
                 <span>Bạn học trên trang</span>
               </button>
+            </div>
+
+            <div className="grid gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3 dark:border-indigo-900/60 dark:bg-indigo-950/30 sm:grid-cols-3">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-200">Trình độ
+                <select value={selectedLevel} onChange={(e) => setSelectedLevel(e.target.value as CEFRLevel)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900">
+                  {CEFR_LEVELS.map((level) => <option key={level.id} value={level.id}>{level.code} · {level.name}</option>)}
+                </select>
+              </label>
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-200">Kiểu thi
+                <select value={duelMode} onChange={(e) => setDuelMode(e.target.value as 'sentence' | 'word')} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-700 dark:bg-slate-900">
+                  <option value="sentence">Dịch nguyên câu</option><option value="word">Dịch từ sang từ</option>
+                </select>
+              </label>
+              <div className="flex items-end text-xs font-semibold text-indigo-800 dark:text-indigo-200">Ghép ngẫu nhiên sẽ tìm đúng người cùng trình độ và kiểu thi.</div>
             </div>
 
             {/* TAB 1: THÁCH ĐẤU BẠN BÈ */}
@@ -1167,7 +1174,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
                       Vào phòng của bạn bè
                     </h3>
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      Nhập mã phòng 4 chữ số (hoặc mã DUEL-xxxx) mà bạn bè đã gửi cho bạn để vào
+                      Nhập mã phòng (DUEL- và 10 ký tự) mà bạn bè đã gửi cho bạn để vào
                       ngay!
                     </p>
 
@@ -1177,7 +1184,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
                       </label>
                       <input
                         type="text"
-                        placeholder="VD: DUEL-4829 hoặc 4829"
+                        placeholder="VD: DUEL-A1B2C3D4E5"
                         value={roomInputCode}
                         onChange={(e) => setRoomInputCode(e.target.value.toUpperCase())}
                         onKeyDown={(e) => e.key === 'Enter' && handleJoinByCode()}
@@ -1286,7 +1293,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
                               />
                               <span
                                 className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-900 ${
-                                  onlinePlayers.some(p => p.id === fr.id) ? 'bg-emerald-500' : 'bg-slate-400'
+                                  'bg-slate-400'
                                 }`}
                               />
                             </div>
@@ -1302,8 +1309,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
 
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
-                              onClick={() => challengePlayer(fr.id, fr.email)}
-                              disabled={connectionStatus !== 'connected' || isSearchingMatch}
+                              onClick={() => handleInvitePlayer({ targetEmail: fr.email })}
                               className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-rose-500 to-indigo-600 hover:from-rose-600 hover:to-indigo-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1 active:scale-95"
                               title={`Thách đấu 1v1 ngay với ${fr.name}`}
                             >
@@ -1420,52 +1426,17 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
 
             {/* TAB 3: BẠN HỌC TRÊN TRANG (DANH SÁCH BẠN BÈ) */}
             {lobbyTab === 'learners' && (
-              <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4 transition-colors">
-                <div>
-                  <h3 className="font-black text-slate-900 dark:text-white text-base">
-                    Giao đấu với Bạn học trên trang
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Người đang mở sảnh đấu sẽ xuất hiện ở đây. Bấm Thách đấu để gửi lời mời trực tiếp.
-                  </p>
-                </div>
-
+              <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 space-y-4">
+                <h3 className="font-bold text-lg">Người chơi đang ở sảnh</h3>
+                <p className="text-sm text-slate-500">Lời mời xuất hiện trong sảnh 1vs1 của người nhận, có hiệu lực 5 phút.</p>
+                {!onlinePlayers.length && <p>Chưa có người khác ở sảnh. Mời bạn bè bằng mã phòng hoặc chờ ghép ngẫu nhiên.</p>}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {onlinePlayers.length === 0 && <p className="text-sm text-slate-500">Chưa có người khác ở sảnh đấu. Hãy nhờ bạn mở mục 1vs1 hoặc dùng Tìm trận.</p>}
-                  {onlinePlayers
-                    .map((learner) => (
-                      <div
-                        key={learner.id}
-                        className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 hover:border-indigo-300 dark:hover:border-indigo-600 transition-colors"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <img
-                            src={
-                              learner.avatar_url ||
-                              `https://api.dicebear.com/7.x/avataaars/svg?seed=${learner.id}`
-                            }
-                            alt={learner.full_name || 'Học viên'}
-                            className="w-10 h-10 rounded-xl ring-2 ring-indigo-400 shadow-xs shrink-0"
-                          />
-                          <div className="min-w-0">
-                            <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate block">
-                              {learner.full_name || 'Người chơi'}
-                            </span>
-                            <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate block">
-                              Đang ở sảnh đấu
-                            </span>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => challengePlayer(learner.id)}
-                          disabled={connectionStatus !== 'connected' || isSearchingMatch}
-                          className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
-                        >
-                          Thách đấu ⚔️
-                        </button>
-                      </div>
-                    ))}
+                  {onlinePlayers.map(learner => (
+                    <div key={learner.id} className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                      <div className="min-w-0"><p className="font-bold break-words">{learner.name}</p><p className="text-sm text-emerald-600">{learner.searching ? 'Đang tìm đối thủ' : 'Đang ở sảnh'}</p></div>
+                      <button onClick={() => handleInvitePlayer({ targetId: learner.id })} className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold">Thách đấu</button>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -1486,6 +1457,11 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
 
     return (
       <div className="max-w-2xl w-full mx-auto space-y-6 animate-in fade-in py-4">
+        {connectionNotice}
+        {floatingAlert && <p role="status" className="p-3 rounded-xl bg-indigo-100 text-indigo-950">{floatingAlert}</p>}
+        {roomState.finishReason === 'opponent_disconnected' && <p>Đối thủ mất kết nối quá 45 giây.</p>}
+        {roomState.finishReason === 'opponent_left' && <p>Đối thủ đã rời trận.</p>}
+        {roomState.finishReason === 'time_limit' && <p>Đã hết thời gian thi đấu.</p>}
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border border-slate-200 dark:border-slate-800 shadow-xl text-center space-y-6 transition-colors">
           {/* Huy hiệu kết quả */}
           <div className="space-y-3">
@@ -1593,7 +1569,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
                 Về Sảnh Đấu
               </button>
               <button
-                onClick={onBackToStudy}
+                onClick={handleBackToStudy}
                 className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors cursor-pointer"
               >
                 Về Phòng Học
@@ -1610,6 +1586,11 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   // =========================================================================
   return (
     <div className="w-full mx-auto space-y-3 sm:space-y-4 overflow-x-clip relative">
+      {connectionNotice}
+      <div className="flex flex-wrap justify-between gap-2 text-sm">
+        <span>Thời gian còn lại: {Math.max(0, Math.ceil(((roomState.deadlineAt || clock) - clock - serverOffset) / 1000))} giây</span>
+        <button onClick={handleLeaveRoom} className="text-rose-500 font-bold">Rời trận</button>
+      </div>
       {/* Floating Active Emotes over screen */}
       {activeEmotes.length > 0 && (
         <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
@@ -1662,7 +1643,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
             ⚔️ TRỰC TIẾP
           </span>
           <span className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-200">
-            Câu {currentQIndex + 1}/{roomState.questions.length}
+            Câu {Math.min(currentQIndex + 1, roomState.questions.length)}/{roomState.questions.length}
           </span>
         </div>
 
@@ -1892,4 +1873,3 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
     </div>
   );
 };
-

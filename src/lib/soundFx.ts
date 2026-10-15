@@ -1,6 +1,7 @@
 // Web Audio API Sound Synthesizer for Game Effects (Zero external assets needed)
 
 let audioCtx: AudioContext | null = null;
+const activeKidsGameSounds = new Set<OscillatorNode>();
 
 function getAudioContext(): AudioContext | null {
   try {
@@ -11,12 +12,75 @@ function getAudioContext(): AudioContext | null {
       }
     }
     if (audioCtx && audioCtx.state === 'suspended') {
-      audioCtx.resume();
+      void audioCtx.resume().catch(() => {});
     }
     return audioCtx;
   } catch (e) {
     return null;
   }
+}
+
+type KidsGameSound = 'flip' | 'correct' | 'wrong' | 'bingo' | 'reward';
+
+const kidsGameTunes: Record<KidsGameSound, Array<{ frequency: number; offset: number; duration: number }>> = {
+  flip: [{ frequency: 620, offset: 0, duration: 0.075 }],
+  correct: [
+    { frequency: 660, offset: 0, duration: 0.11 },
+    { frequency: 880, offset: 0.085, duration: 0.14 },
+  ],
+  wrong: [
+    { frequency: 330, offset: 0, duration: 0.11 },
+    { frequency: 260, offset: 0.09, duration: 0.14 },
+  ],
+  bingo: [
+    { frequency: 523.25, offset: 0, duration: 0.14 },
+    { frequency: 659.25, offset: 0.11, duration: 0.14 },
+    { frequency: 783.99, offset: 0.22, duration: 0.22 },
+  ],
+  reward: [
+    { frequency: 523.25, offset: 0, duration: 0.13 },
+    { frequency: 659.25, offset: 0.1, duration: 0.13 },
+    { frequency: 783.99, offset: 0.2, duration: 0.13 },
+    { frequency: 1046.5, offset: 0.3, duration: 0.27 },
+  ],
+};
+
+/** Gentle, short feedback tones for the children's game hub. Call only from a user action. */
+export function playKidsGameSound(sound: KidsGameSound): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  kidsGameTunes[sound].forEach(({ frequency, offset, duration }) => {
+    const start = ctx.currentTime + offset;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(frequency, start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(0.04, start + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.onended = () => activeKidsGameSounds.delete(oscillator);
+    activeKidsGameSounds.add(oscillator);
+    try {
+      oscillator.start(start);
+      oscillator.stop(start + duration + 0.01);
+    } catch {
+      activeKidsGameSounds.delete(oscillator);
+    }
+  });
+}
+
+export function stopKidsGameSounds(): void {
+  activeKidsGameSounds.forEach((oscillator) => {
+    try {
+      oscillator.stop();
+    } catch {
+      // The tone may have already ended.
+    }
+  });
+  activeKidsGameSounds.clear();
 }
 
 /** Âm thanh chém kiếm (Sword Slash) */

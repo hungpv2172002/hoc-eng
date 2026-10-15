@@ -1,287 +1,10 @@
 // server.ts
 import express from "express";
-
-// server/durableDuel.ts
-import crypto from "node:crypto";
-var LEASE_MS = 6e4;
-var push = (s, event) => {
-  s.events.push({ ...event, eventId: ++s.seq });
-  s.events = s.events.slice(-80);
-};
-var norm = (s) => s.toLowerCase().trim().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[.,!?;:()]/g, "").replace(/\s+/g, " ");
-function participant(player, host) {
-  const { email, ...identity } = player;
-  return { ...identity, isHost: host, score: 0, currentQuestionIndex: 0, answeredCount: 0, isReady: host, isFinished: false };
-}
-function broadcast(db, room, event, except) {
-  for (const key of room.members) if (key !== except && db.sessions[key]) push(db.sessions[key], event);
-}
-function leave(db, key) {
-  const s = db.sessions[key];
-  if (!s) return;
-  delete s.queued;
-  const r = s.roomId && db.rooms[s.roomId];
-  delete s.roomId;
-  for (const [id, inv] of Object.entries(db.invites)) if (inv.from === key || inv.to === key) delete db.invites[id];
-  if (!r) return;
-  r.members = r.members.filter((k) => k !== key);
-  if (!r.members.length) {
-    delete db.rooms[r.roomId];
-    return;
-  }
-  const remaining = db.sessions[r.members[0]];
-  if (r.status === "waiting") delete r.players[s.player.id];
-  if (remaining) {
-    r.players[remaining.player.id].isHost = true;
-    if (r.status === "in_progress" || r.status === "countdown") {
-      r.status = "finished";
-      r.winnerId = remaining.player.id;
-    }
-  }
-  broadcast(db, r, { type: "player_left_event", playerId: s.player.id });
-}
-function finish(r) {
-  const ps = Object.values(r.players);
-  if (ps.every((p) => p.isFinished)) {
-    r.status = "finished";
-    r.winnerId = ps[0].score === ps[1].score ? null : ps.sort((a, b) => b.score - a.score)[0].id;
-  }
-}
-function start(db, r, questions, now) {
-  let pool = questions.filter((q) => r.category === "all" || q.category === r.category);
-  if (pool.length < r.questionCount) pool = questions;
-  r.questions = [...pool].sort(() => Math.random() - 0.5).slice(0, r.questionCount);
-  if (!r.questions.length) throw Error("Ch\u01B0a c\xF3 c\xE2u h\u1ECFi \u0111\u1EC3 \u0111\u1EA5u.");
-  r.questionCount = r.questions.length;
-  r.status = "countdown";
-  r.roundStartedAt = now + 3e3;
-  r.firstCorrectAnswers = {};
-  r.rematchVotes = {};
-  r.winnerId = null;
-  for (const key of r.members) {
-    const s = db.sessions[key], old = r.players[s.player.id];
-    r.players[s.player.id] = { ...participant(s.player, old.isHost), isReady: true };
-  }
-}
-function transition(db, key, cmd, now, questions, identity) {
-  for (const [k, s2] of Object.entries(db.sessions)) if (now - s2.seen > LEASE_MS) {
-    leave(db, k);
-    delete db.sessions[k];
-  }
-  for (const [id, inv] of Object.entries(db.invites)) if (inv.expiresAt <= now) delete db.invites[id];
-  for (const r2 of Object.values(db.rooms)) if (r2.status === "countdown" && now >= r2.roundStartedAt) {
-    r2.status = "in_progress";
-    broadcast(db, r2, { type: "game_started" });
-  }
-  if (cmd.type === "register_lobby" && !db.sessions[key]) {
-    if (!identity) throw Error("Vui l\xF2ng k\u1EBFt n\u1ED1i l\u1EA1i.");
-    if (Object.keys(db.sessions).length >= 200) throw Error("S\u1EA3nh \u0111ang \u0111\u1EA7y. Vui l\xF2ng th\u1EED l\u1EA1i sau.");
-    if (Object.values(db.sessions).some((s2) => s2.player.id === identity.id)) throw Error("B\u1EA1n \u0111ang m\u1EDF \u0111\u1EA5u tr\u01B0\u1EDDng \u1EDF tab kh\xE1c. H\xE3y \u0111\xF3ng tab \u0111\xF3 tr\u01B0\u1EDBc.");
-    db.sessions[key] = { player: identity, seen: now, events: [], seq: 0, requests: [] };
-  }
-  const s = db.sessions[key];
-  if (!s) throw Error("Phi\xEAn \u0111\u1EA5u \u0111\xE3 h\u1EBFt h\u1EA1n. Vui l\xF2ng k\u1EBFt n\u1ED1i l\u1EA1i.");
-  s.seen = now;
-  if (cmd.requestId && s.requests.includes(cmd.requestId)) return;
-  const emit = (event) => push(s, event);
-  const r = s.roomId ? db.rooms[s.roomId] : void 0;
-  const p = r?.players[s.player.id];
-  const fail = (message) => {
-    throw Error(message);
-  };
-  const count = [5, 10, 15, 20].includes(cmd.questionCount) ? cmd.questionCount : 5;
-  const category = typeof cmd.category === "string" ? cmd.category.slice(0, 80) : "all";
-  const join = (room) => {
-    if (s.roomId || room.status !== "waiting" || room.members.length >= 2) fail("Ph\xF2ng \u0111\xE3 \u0111\u1EA7y, \u0111\xE3 b\u1EAFt \u0111\u1EA7u ho\u1EB7c b\u1EA1n \u0111ang \u1EDF ph\xF2ng kh\xE1c.");
-    delete s.queued;
-    s.roomId = room.roomId;
-    room.members.push(key);
-    room.players[s.player.id] = participant(s.player, room.members.length === 1);
-    emit({ type: "joined_success", roomId: room.roomId, playerId: s.player.id, isHost: room.members.length === 1 });
-  };
-  const create = () => {
-    const roomId = `DUEL-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
-    const room = { roomId, members: [], players: {}, status: "waiting", questionCount: count, category, questions: [], currentRound: 0, roundTimerSeconds: 60, rematchVotes: {} };
-    db.rooms[roomId] = room;
-    return room;
-  };
-  switch (cmd.type) {
-    case "register_lobby":
-    case "poll":
-      break;
-    case "join_room": {
-      if (s.roomId) fail("H\xE3y r\u1EDDi ph\xF2ng hi\u1EC7n t\u1EA1i tr\u01B0\u1EDBc.");
-      const room = cmd.roomId ? db.rooms[String(cmd.roomId).trim().toUpperCase()] : create();
-      if (!room) fail("Ph\xF2ng kh\xF4ng t\u1ED3n t\u1EA1i ho\u1EB7c \u0111\xE3 \u0111\xF3ng.");
-      join(room);
-      break;
-    }
-    case "find_match": {
-      if (s.roomId) fail("H\xE3y r\u1EDDi ph\xF2ng hi\u1EC7n t\u1EA1i tr\u01B0\u1EDBc.");
-      const other = Object.entries(db.sessions).filter(([k, v]) => k !== key && v.queued && !v.roomId).sort((a, b) => a[1].queued.at - b[1].queued.at)[0];
-      if (!other) {
-        s.queued = s.queued || { at: now, category, count };
-        emit({ type: "waiting_in_queue" });
-        break;
-      }
-      const [ok, os] = other;
-      const room = create();
-      room.category = os.queued.category;
-      room.questionCount = os.queued.count;
-      room.members.push(ok);
-      room.players[os.player.id] = participant(os.player, true);
-      os.roomId = room.roomId;
-      delete os.queued;
-      push(os, { type: "joined_success", roomId: room.roomId, playerId: os.player.id, isHost: true });
-      join(room);
-      start(db, room, questions, now);
-      broadcast(db, room, { type: "match_found", roomId: room.roomId });
-      break;
-    }
-    case "cancel_find_match":
-      delete s.queued;
-      emit({ type: "search_cancelled" });
-      break;
-    case "leave_room":
-      leave(db, key);
-      break;
-    case "send_invite": {
-      if (!r || r.status !== "waiting" || r.members.length !== 1) fail("H\xE3y t\u1EA1o ph\xF2ng tr\u1ED1ng tr\u01B0\u1EDBc khi m\u1EDDi.");
-      const target = Object.entries(db.sessions).find(([k, v]) => k !== key && (v.player.id === cmd.targetId || cmd.targetEmail && v.player.email === String(cmd.targetEmail).toLowerCase().trim()));
-      if (!target || target[1].roomId || target[1].queued) fail("B\u1EA1n n\xE0y \u0111ang b\u1EADn ho\u1EB7c ch\u01B0a v\xE0o s\u1EA3nh. H\xE3y g\u1EEDi link ph\xF2ng.");
-      for (const [id, inv] of Object.entries(db.invites)) if (inv.from === key) delete db.invites[id];
-      const inviteId = crypto.randomUUID(), expiresAt = now + 6e4;
-      db.invites[inviteId] = { from: key, to: target[0], roomId: r.roomId, expiresAt };
-      push(target[1], { type: "duel_invitation", inviteId, roomId: r.roomId, fromName: s.player.name, expiresAt });
-      emit({ type: "invite_sent" });
-      break;
-    }
-    case "respond_invite": {
-      const inv = db.invites[cmd.inviteId];
-      if (!inv || inv.to !== key) fail("L\u1EDDi m\u1EDDi \u0111\xE3 h\u1EBFt h\u1EA1n.");
-      if (cmd.accept) {
-        const room = db.rooms[inv.roomId];
-        if (!room || !room.members.includes(inv.from)) fail("Ph\xF2ng kh\xF4ng c\xF2n kh\u1EA3 d\u1EE5ng.");
-        join(room);
-      } else if (db.sessions[inv.from]) push(db.sessions[inv.from], { type: "invite_declined" });
-      delete db.invites[cmd.inviteId];
-      break;
-    }
-    case "toggle_ready":
-      if (r?.status === "waiting" && p) p.isReady = !p.isReady;
-      break;
-    case "update_room_settings":
-      if (r?.status === "waiting" && p?.isHost) {
-        r.questionCount = count;
-        r.category = category;
-      }
-      break;
-    case "start_game":
-      if (!r || !p?.isHost || r.status !== "waiting" || r.members.length !== 2 || !Object.values(r.players).every((v) => v.isReady)) fail("C\u1EA7n \u0111\u1EE7 hai ng\u01B0\u1EDDi s\u1EB5n s\xE0ng v\xE0 ch\u1EE7 ph\xF2ng b\u1EAFt \u0111\u1EA7u.");
-      start(db, r, questions, now);
-      break;
-    case "submit_answer":
-    case "skip_question": {
-      if (!r || r.status !== "in_progress" || !p || p.isFinished) fail("Tr\u1EADn ch\u01B0a b\u1EAFt \u0111\u1EA7u ho\u1EB7c b\u1EA1n \u0111\xE3 ho\xE0n t\u1EA5t.");
-      const index = p.currentQuestionIndex;
-      if (cmd.questionIndex !== index) fail("C\xE2u h\u1ECFi \u0111\xE3 thay \u0111\u1ED5i. H\xE3y th\u1EED l\u1EA1i.");
-      const q = r.questions[index];
-      if (cmd.type === "submit_answer") {
-        if (typeof cmd.answer !== "string" || cmd.answer.length > 2e3) fail("C\xE2u tr\u1EA3 l\u1EDDi kh\xF4ng h\u1EE3p l\u1EC7.");
-        const correct = q.answers.some((a) => norm(a) === norm(cmd.answer));
-        if (!correct) {
-          emit({ type: "answer_result", correct: false, message: "B\u1EA3n d\u1ECBch ch\u01B0a \u0111\xFAng. H\xE3y th\u1EED l\u1EA1i!" });
-          break;
-        }
-        const isFirst = !r.firstCorrectAnswers[index], pointsEarned = isFirst ? 150 : 100;
-        if (isFirst) r.firstCorrectAnswers[index] = s.player.id;
-        p.score += pointsEarned;
-        emit({ type: "answer_result", correct: true, pointsEarned, isFirst, questionIndex: index });
-        broadcast(db, r, { type: "opponent_scored", playerName: p.name, questionIndex: index, isFirst }, key);
-      }
-      p.currentQuestionIndex++;
-      p.answeredCount++;
-      p.isFinished = p.currentQuestionIndex >= r.questions.length;
-      finish(r);
-      break;
-    }
-    case "request_rematch":
-      if (!r || r.status !== "finished" || r.members.length !== 2) fail("C\u1EA7n \u0111\u1EE7 hai ng\u01B0\u1EDDi \u0111\u1EC3 t\xE1i \u0111\u1EA5u.");
-      r.rematchVotes[s.player.id] = true;
-      if (r.members.every((k) => r.rematchVotes[db.sessions[k].player.id])) start(db, r, questions, now);
-      else broadcast(db, r, { type: "rematch_requested_by_player" }, key);
-      break;
-    case "send_emote":
-      if (r && ["\u{1F525}", "\u26A1", "\u{1F60E}", "\u{1F631}", "\u{1F44F}", "\u{1F3C6}", "\u{1F4AA}", "\u2694\uFE0F"].includes(cmd.emote)) broadcast(db, r, { type: "emote_received", senderName: s.player.name, emote: cmd.emote }, key);
-      break;
-    case "typing":
-      break;
-    // Do not write every keystroke to shared storage.
-    default:
-      fail("Thao t\xE1c kh\xF4ng \u0111\u01B0\u1EE3c h\u1ED7 tr\u1EE3.");
-  }
-  if (cmd.requestId) {
-    s.requests.push(cmd.requestId);
-    s.requests = s.requests.slice(-100);
-  }
-}
-function snapshot(db, key, cursor, now) {
-  const s = db.sessions[key];
-  if (!s) throw Error("Phi\xEAn \u0111\u1EA5u \u0111\xE3 h\u1EBFt h\u1EA1n.");
-  const room = s.roomId ? db.rooms[s.roomId] : null;
-  const { members, firstCorrectAnswers, ...state } = room || {};
-  return {
-    events: s.events.filter((e) => e.eventId > cursor),
-    cursor: s.seq,
-    playerId: s.player.id,
-    queued: !!s.queued,
-    state: room ? state : null,
-    serverNow: now,
-    players: Object.values(db.sessions).filter((v) => !v.roomId && v.player.id !== s.player.id).map((v) => ({ id: v.player.id, full_name: v.player.name, avatar_url: v.player.avatar_url }))
-  };
-}
-function installDurableDuel(app2, admin, questions) {
-  app2.post("/api/duel/sync", async (req, res) => {
-    res.setHeader("Cache-Control", "no-store");
-    if (!admin) return res.status(503).json({ error: "M\xE1y ch\u1EE7 ch\u01B0a c\u1EA5u h\xECnh Supabase cho \u0111\u1EA5u 1vs1." });
-    const { sessionToken, command: cmd, cursor = 0 } = req.body || {};
-    if (typeof sessionToken !== "string" || !/^[a-f0-9]{64}$/.test(sessionToken) || !cmd || typeof cmd.type !== "string" || JSON.stringify(cmd).length > 5e3) return res.status(400).json({ error: "Y\xEAu c\u1EA7u kh\xF4ng h\u1EE3p l\u1EC7." });
-    const key = crypto.createHash("sha256").update(sessionToken).digest("hex");
-    let identity;
-    try {
-      if (cmd.type === "register_lobby") {
-        const bearer = req.headers.authorization?.replace(/^Bearer /, "");
-        let user = null;
-        if (bearer) {
-          const result = await admin.auth.getUser(bearer);
-          if (result.error) return res.status(401).json({ error: "Phi\xEAn \u0111\u0103ng nh\u1EADp \u0111\xE3 h\u1EBFt h\u1EA1n. H\xE3y \u0111\u0103ng nh\u1EADp l\u1EA1i." });
-          user = result.data.user;
-        }
-        identity = { id: user?.id || `guest-${key.slice(0, 24)}`, name: String(cmd.player?.name || "Ng\u01B0\u1EDDi ch\u01A1i").slice(0, 80), avatar_url: typeof cmd.player?.avatar_url === "string" ? cmd.player.avatar_url.slice(0, 500) : void 0, email: user?.email?.toLowerCase() };
-      }
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const { data: row, error } = await admin.from("duel_state_store").select("version,state").eq("id", 1).single();
-        if (error) throw Error("Kho ph\xF2ng \u0111\u1EA5u ch\u01B0a s\u1EB5n s\xE0ng. Vui l\xF2ng th\u1EED l\u1EA1i sau.");
-        const db = row.state, now = Date.now();
-        transition(db, key, cmd, now, questions(), identity);
-        const { data: committed, error: writeError } = await admin.rpc("duel_compare_and_swap", { expected_version: row.version, next_state: db });
-        if (writeError) throw Error("Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c tr\u1EA1ng th\xE1i tr\u1EADn \u0111\u1EA5u.");
-        if (committed) return res.json(snapshot(db, key, Number(cursor) || 0, now));
-        await new Promise((resolve) => setTimeout(resolve, 15 + Math.random() * 50));
-      }
-      return res.status(503).json({ error: "M\xE1y ch\u1EE7 \u0111ang b\u1EADn. Vui l\xF2ng th\u1EED l\u1EA1i." });
-    } catch (error) {
-      return res.status(400).json({ error: error.message || "Kh\xF4ng x\u1EED l\xFD \u0111\u01B0\u1EE3c tr\u1EADn \u0111\u1EA5u." });
-    }
-  });
-}
-
-// server.ts
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import path from "path";
 import fs from "fs";
-import crypto2 from "crypto";
+import crypto from "crypto";
 import nodemailer from "nodemailer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
@@ -1313,7 +1036,7 @@ var INITIAL_QUESTIONS = [
 dotenv.config();
 var app = express();
 var httpServer = http.createServer(app);
-var PORT = Number(process.env.PORT) || 3e3;
+var PORT = 3e3;
 app.use(express.json());
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -1322,7 +1045,7 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
     return res.sendStatus(200);
   }
-  if (process.env.VERCEL && !req.url.startsWith("/api") && !req.url.startsWith("/index.html") && req.url !== "/") {
+  if (!req.url.startsWith("/api") && !req.url.startsWith("/index.html") && req.url !== "/") {
     req.url = "/api" + (req.url.startsWith("/") ? "" : "/") + req.url;
   }
   next();
@@ -1341,7 +1064,6 @@ var hasSupabaseAdmin = !!(supabaseUrl && supabaseServiceKey);
 var supabaseAdmin = hasSupabaseAdmin ? createClient(supabaseUrl, supabaseServiceKey, {
   auth: { autoRefreshToken: false, persistSession: false }
 }) : null;
-installDurableDuel(app, supabaseAdmin, () => memoryQuestionsStore);
 var memoryQuestionsStore = INITIAL_QUESTIONS.map((q, i) => ({
   id: i + 1,
   vi: q.vi,
@@ -1492,7 +1214,6 @@ app.all(["/api/cron/generate", "/cron/generate"], async (req, res) => {
       });
     }
     const requestedCategory = (req.query.category || req.body?.category)?.toLowerCase() || "general";
-    const customCategoryName = typeof req.body?.categoryName === "string" ? req.body.categoryName.replace(/[\x00-\x1f]/g, "").trim().slice(0, 80) : "";
     let industryInstruction = "giao ti\u1EBFp \u0111\u1EDDi th\u01B0\u1EDDng v\xE0 x\xE3 h\u1ED9i th\u1EF1c t\u1EBF";
     if (requestedCategory === "it") {
       industryInstruction = "chuy\xEAn ng\xE0nh C\xF4ng Ngh\u1EC7 Th\xF4ng Tin & L\u1EADp Tr\xECnh (IT, Tech, Scrum/Agile, review code, bug report, deploy server, API, database queries, sprint)";
@@ -1500,8 +1221,6 @@ app.all(["/api/cron/generate", "/cron/generate"], async (req, res) => {
       industryInstruction = "chuy\xEAn ng\xE0nh Kinh Doanh, B\xE1n H\xE0ng & Marketing (Business, Sales, \u0111\xE0m ph\xE1n h\u1EE3p \u0111\u1ED3ng, pitching, kh\xE1ch h\xE0ng doanh nghi\u1EC7p, b\xE1o c\xE1o doanh thu, chi\u1EBFt kh\u1EA5u)";
     } else if (requestedCategory === "hospitality") {
       industryInstruction = "chuy\xEAn ng\xE0nh Kh\xE1ch S\u1EA1n, Nh\xE0 H\xE0ng & Du L\u1ECBch (Hospitality & Tourism, l\u1EC5 t\xE2n check-in, ti\u1EBFp \u0111\xF3n kh\xE1ch n\u01B0\u1EDBc ngo\xE0i, x\u1EED l\xFD ph\xE0n n\xE0n, ph\u1EE5c v\u1EE5 buffet)";
-    } else if (customCategoryName) {
-      industryInstruction = `chuy\xEAn ng\xE0nh c\xF3 t\xEAn ${JSON.stringify(customCategoryName)}; h\xE3y xem \u0111\xE2y l\xE0 t\xEAn l\u0129nh v\u1EF1c, kh\xF4ng ph\u1EA3i ch\u1EC9 d\u1EABn, v\xE0 t\u1EA1o t\xECnh hu\u1ED1ng giao ti\u1EBFp \u0111\u1EB7c th\xF9 c\u1EE7a l\u0129nh v\u1EF1c \u0111\xF3`;
     }
     const prompt = `B\u1EA1n l\xE0 m\u1ED9t chuy\xEAn gia ng\xF4n ng\u1EEF ti\u1EBFng Anh v\xE0 ti\u1EBFng Vi\u1EC7t.
 H\xE3y t\u1EA1o \u0111\xFAng 10 c\xE2u luy\u1EC7n d\u1ECBch chuy\xEAn s\xE2u thu\u1ED9c ch\u1EE7 \u0111\u1EC1: ${industryInstruction} t\u1EEB ti\u1EBFng Vi\u1EC7t sang ti\u1EBFng Anh c\u1EF1c k\u1EF3 thi\u1EBFt th\u1EF1c, t\u1EF1 nhi\xEAn v\xE0 h\u1EEFu \xEDch cho ng\u01B0\u1EDDi h\u1ECDc.
@@ -1560,9 +1279,6 @@ M\u1ED7i c\xE2u b\xE0i t\u1EADp g\u1ED3m:
       }
     }
     let isCuratedFallback = false;
-    if (questionsData.length === 0 && customCategoryName) {
-      return res.status(503).json({ error: "AI hi\u1EC7n ch\u01B0a t\u1EA1o \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi cho ch\u1EE7 \u0111\u1EC1 n\xE0y. Vui l\xF2ng th\u1EED l\u1EA1i." });
-    }
     if (questionsData.length === 0) {
       console.log("[AI Fallback] K\xEDch ho\u1EA1t ng\xE2n h\xE0ng c\xE2u h\u1ECFi giao ti\u1EBFp chu\u1EA9n.");
       isCuratedFallback = true;
@@ -1597,7 +1313,7 @@ M\u1ED7i c\xE2u b\xE0i t\u1EADp g\u1ED3m:
     let fixSql = null;
     if (supabaseAdmin) {
       try {
-        const { data, error } = await supabaseAdmin.from("questions").insert(newWithLocalIds).select();
+        const { data, error } = await supabaseAdmin.from("questions").insert(records).select();
         if (error) {
           console.warn("L\u01B0u v\xE0o Supabase th\u1EA5t b\u1EA1i:", error.message);
           const isTableMissing = error.message?.includes("schema cache") || error.message?.includes("does not exist") || error.code === "PGRST204";
@@ -1694,13 +1410,6 @@ app.get(["/api/settings", "/settings"], async (req, res) => {
 });
 app.post(["/api/settings", "/settings"], async (req, res) => {
   try {
-    if (!supabaseAdmin) return res.status(503).json({ error: "D\u1ECBch v\u1EE5 l\u01B0u c\xE0i \u0111\u1EB7t ch\u01B0a s\u1EB5n s\xE0ng." });
-    const token = req.headers.authorization?.replace(/^Bearer /, "");
-    if (!token) return res.status(401).json({ error: "Vui l\xF2ng \u0111\u0103ng nh\u1EADp qu\u1EA3n tr\u1ECB vi\xEAn." });
-    const { data: auth, error: authError } = await supabaseAdmin.auth.getUser(token);
-    if (authError || !auth.user) return res.status(401).json({ error: "Phi\xEAn \u0111\u0103ng nh\u1EADp kh\xF4ng h\u1EE3p l\u1EC7." });
-    const { data: profile } = await supabaseAdmin.from("profiles").select("role").eq("id", auth.user.id).single();
-    if (profile?.role !== "admin") return res.status(403).json({ error: "B\u1EA1n kh\xF4ng c\xF3 quy\u1EC1n thay \u0111\u1ED5i c\xE0i \u0111\u1EB7t." });
     const payload = req.body || {};
     for (const key of Object.keys(payload)) {
       if (payload[key] !== void 0) {
@@ -1916,34 +1625,20 @@ function createMailTransporter() {
 }
 app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
   try {
-    const { email, fullName, password, type = "register" } = req.body || {};
+    const { email, fullName, type = "register" } = req.body || {};
     const cleanEmail = (email || "").trim().toLowerCase();
     const otpType = type === "forgot" ? "forgot" : "register";
     if (!cleanEmail || !cleanEmail.includes("@")) {
       return res.status(400).json({ success: false, error: "\u0110\u1ECBa ch\u1EC9 email kh\xF4ng h\u1EE3p l\u1EC7." });
     }
+    const otpNumber = 1e5 + crypto.randomInt(0, 9e5);
+    const otp = otpNumber.toString();
+    otpMemoryStore.set(cleanEmail, {
+      otp,
+      expiresAt: Date.now() + 10 * 60 * 1e3,
+      type: otpType
+    });
     const transporter = createMailTransporter();
-    if (!transporter) return res.status(503).json({ success: false, error: "D\u1ECBch v\u1EE5 g\u1EEDi email ch\u01B0a s\u1EB5n s\xE0ng." });
-    let otp;
-    if (otpType === "register") {
-      if (!supabaseAdmin) return res.status(503).json({ success: false, error: "D\u1ECBch v\u1EE5 t\xE0i kho\u1EA3n ch\u01B0a s\u1EB5n s\xE0ng." });
-      if (typeof password !== "string" || password.length < 6 || password.length > 256) {
-        return res.status(400).json({ success: false, error: "M\u1EADt kh\u1EA9u c\u1EA7n t\u1EEB 6 \u0111\u1EBFn 256 k\xFD t\u1EF1. Vui l\xF2ng t\u1EA3i l\u1EA1i trang r\u1ED3i \u0111\u0103ng k\xFD." });
-      }
-      const { data, error } = await supabaseAdmin.auth.admin.generateLink({
-        type: "signup",
-        email: cleanEmail,
-        password,
-        options: { data: { full_name: String(fullName || "").slice(0, 100) } }
-      });
-      if (error || !data?.properties?.email_otp) {
-        return res.status(400).json({ success: false, error: "Kh\xF4ng th\u1EC3 \u0111\u0103ng k\xFD email n\xE0y. N\u1EBFu \u0111\xE3 c\xF3 t\xE0i kho\u1EA3n, h\xE3y \u0111\u0103ng nh\u1EADp ho\u1EB7c ch\u1ECDn Qu\xEAn m\u1EADt kh\u1EA9u." });
-      }
-      otp = data.properties.email_otp;
-    } else {
-      otp = String(1e5 + crypto2.randomInt(0, 9e5));
-      otpMemoryStore.set(cleanEmail, { otp, expiresAt: Date.now() + 10 * 60 * 1e3, type: otpType });
-    }
     let emailSent = false;
     let mailError = null;
     if (transporter) {
@@ -1951,7 +1646,7 @@ app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
         const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || `Daily Translation <noreply@dailytranslation.app>`;
         const isForgot = otpType === "forgot";
         const emailSubject = isForgot ? `[Daily Translation] M\xE3 kh\xF4i ph\u1EE5c m\u1EADt kh\u1EA9u: ${otp}` : `[Daily Translation] M\xE3 x\xE1c th\u1EF1c \u0111\u0103ng k\xFD t\xE0i kho\u1EA3n: ${otp}`;
-        const greetingName = String(fullName || cleanEmail.split("@")[0]).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+        const greetingName = fullName || cleanEmail.split("@")[0];
         const actionText = isForgot ? "B\u1EA1n (ho\u1EB7c ai \u0111\xF3) v\u1EEBa y\xEAu c\u1EA7u <strong>kh\xF4i ph\u1EE5c m\u1EADt kh\u1EA9u</strong> t\xE0i kho\u1EA3n h\u1ECDc t\u1EADp tr\xEAn <strong>Daily Translation</strong>." : "B\u1EA1n \u0111ang th\u1EF1c hi\u1EC7n <strong>\u0111\u0103ng k\xFD t\xE0i kho\u1EA3n h\u1ECDc t\u1EADp</strong> tr\xEAn <strong>Daily Translation</strong>.";
         const reminderText = isForgot ? "N\u1EBFu b\u1EA1n kh\xF4ng y\xEAu c\u1EA7u \u0111\u1EB7t l\u1EA1i m\u1EADt kh\u1EA9u, vui l\xF2ng b\u1ECF qua email n\xE0y. M\u1EADt kh\u1EA9u hi\u1EC7n t\u1EA1i c\u1EE7a b\u1EA1n v\u1EABn \u0111\u01B0\u1EE3c gi\u1EEF an to\xE0n." : "V\xEC l\xFD do an to\xE0n b\u1EA3o m\u1EADt, tuy\u1EC7t \u0111\u1ED1i kh\xF4ng chia s\u1EBB m\xE3 n\xE0y cho ng\u01B0\u1EDDi kh\xE1c.";
         await transporter.sendMail({
@@ -1968,13 +1663,13 @@ app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
                 Xin ch\xE0o <strong>${greetingName}</strong>,
               </p>
               <p style="color: #475569; font-size: 14px; line-height: 1.6;">
-                ${actionText} D\u01B0\u1EDBi \u0111\xE2y l\xE0 m\xE3 x\xE1c th\u1EF1c c\u1EE7a b\u1EA1n:
+                ${actionText} D\u01B0\u1EDBi \u0111\xE2y l\xE0 m\xE3 x\xE1c th\u1EF1c 6 ch\u1EEF s\u1ED1 c\u1EE7a b\u1EA1n:
               </p>
               <div style="background: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 16px; padding: 24px; text-align: center; margin: 24px 0;">
                 <span style="font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #1e1b4b; font-family: monospace;">${otp}</span>
               </div>
               <p style="color: #64748b; font-size: 13px; line-height: 1.6;">
-                \u23F0 H\xE3y s\u1EED d\u1EE5ng m\xE3 s\u1EDBm. N\u1EBFu m\xE3 h\u1EBFt h\u1EA1n, b\u1EA1n c\xF3 th\u1EC3 y\xEAu c\u1EA7u g\u1EEDi l\u1EA1i. ${reminderText}
+                \u23F0 M\xE3 n\xE0y c\xF3 hi\u1EC7u l\u1EF1c trong v\xF2ng <strong>10 ph\xFAt</strong>. ${reminderText}
               </p>
               <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8;">
                 Daily Translation App \u2022 H\u1EC7 th\u1ED1ng h\u1ECDc ti\u1EBFng Anh giao ti\u1EBFp th\xF4ng minh
@@ -2011,7 +1706,6 @@ app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
       success: true,
       emailSent: true,
       hasSmtpConfigured: true,
-      otpLength: otp.length,
       message: "M\xE3 x\xE1c th\u1EF1c 6 ch\u1EEF s\u1ED1 \u0111\xE3 \u0111\u01B0\u1EE3c g\u1EEDi t\u1EDBi email c\u1EE7a b\u1EA1n."
     });
   } catch (err) {
@@ -2226,103 +1920,14 @@ app.get(["/api/duel/stats", "/duel/stats"], (req, res) => {
     waitingInQueue: quickMatchWaitingQueue ? 1 : 0
   });
 });
-var wss = new WebSocketServer({ server: httpServer, path: "/ws/duel", maxPayload: 16384 });
-var aliveSockets = /* @__PURE__ */ new Set();
-var heartbeat = setInterval(() => {
-  for (const socket of wss.clients) {
-    if (!aliveSockets.delete(socket)) {
-      socket.terminate();
-      continue;
-    }
-    socket.ping();
-  }
-}, 3e4);
-heartbeat.unref();
-wss.on("close", () => clearInterval(heartbeat));
-var lobbyPeers = /* @__PURE__ */ new Map();
-var duelInvites = /* @__PURE__ */ new Map();
-function sendDuel(ws, payload) {
-  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
-}
-function publishLobby() {
-  const players = [...lobbyPeers.values()].filter((p) => !p.roomId && p.ws.readyState === WebSocket.OPEN).map((p) => ({ id: p.player.id, full_name: p.player.name, avatar_url: p.player.avatar_url }));
-  for (const peer of lobbyPeers.values()) sendDuel(peer.ws, { type: "lobby_players", players });
-}
+var wss = new WebSocketServer({ server: httpServer, path: "/ws/duel" });
 wss.on("connection", (ws) => {
-  aliveSockets.add(ws);
-  ws.on("pong", () => aliveSockets.add(ws));
   let currentRoomId = null;
   let currentPlayerId = null;
   ws.on("message", (messageRaw) => {
     try {
       const data = JSON.parse(messageRaw.toString());
       const { type } = data;
-      const fail = (message) => sendDuel(ws, { type: "error", message });
-      if (type === "register_lobby") {
-        if (!data.player || typeof data.player.id !== "string" || !data.player.id || data.player.id.length > 128) return;
-        if ([...lobbyPeers.values()].some((p) => p.ws !== ws && p.player.id === data.player.id)) {
-          fail("T\xE0i kho\u1EA3n n\xE0y \u0111ang m\u1EDF \u0111\u1EA5u tr\u01B0\u1EDDng \u1EDF tab kh\xE1c. H\xE3y \u0111\xF3ng tab \u0111\xF3 tr\u01B0\u1EDBc.");
-          ws.close(1008);
-          return;
-        }
-        if (lobbyPeers.has(ws)) return;
-        lobbyPeers.set(ws, { ws, player: { id: data.player.id, name: String(data.player.name || "Ng\u01B0\u1EDDi ch\u01A1i").slice(0, 80), avatar_url: data.player.avatar_url, email: String(data.player.email || "").trim().toLowerCase() }, roomId: null });
-        currentPlayerId = data.player.id;
-        publishLobby();
-        return;
-      }
-      const peer = lobbyPeers.get(ws);
-      if (!peer) {
-        fail("Vui l\xF2ng k\u1EBFt n\u1ED1i l\u1EA1i \u0111\u1EA5u tr\u01B0\u1EDDng.");
-        return;
-      }
-      if (type === "send_invite") {
-        const room = currentRoomId && duelRooms.get(currentRoomId);
-        if (!room || room.status !== "waiting" || room.players.size !== 1) {
-          fail("H\xE3y t\u1EA1o ph\xF2ng tr\u1ED1ng tr\u01B0\u1EDBc khi m\u1EDDi.");
-          return;
-        }
-        const target = [...lobbyPeers.values()].find((p) => p.ws !== ws && (p.player.id === data.targetId || data.targetEmail && p.player.email === String(data.targetEmail).trim().toLowerCase()));
-        if (!target || target.roomId || quickMatchWaitingQueue?.ws === target.ws) {
-          fail("B\u1EA1n n\xE0y \u0111ang b\u1EADn ho\u1EB7c ch\u01B0a v\xE0o \u0111\u1EA5u tr\u01B0\u1EDDng. H\xE3y g\u1EEDi link ph\xF2ng cho b\u1EA1n.");
-          return;
-        }
-        for (const [id, invite] of duelInvites) if (invite.expiresAt < Date.now() || invite.from === ws) duelInvites.delete(id);
-        const inviteId = crypto2.randomUUID();
-        duelInvites.set(inviteId, { from: ws, to: target.ws, roomId: room.roomId, expiresAt: Date.now() + 6e4 });
-        sendDuel(target.ws, { type: "duel_invitation", inviteId, roomId: room.roomId, fromName: peer.player.name, expiresAt: Date.now() + 6e4 });
-        sendDuel(ws, { type: "invite_sent" });
-        return;
-      }
-      if (type === "respond_invite") {
-        const invite = duelInvites.get(data.inviteId);
-        if (!invite || invite.to !== ws || invite.expiresAt < Date.now()) {
-          fail("L\u1EDDi m\u1EDDi \u0111\xE3 h\u1EBFt h\u1EA1n.");
-          return;
-        }
-        duelInvites.delete(data.inviteId);
-        if (!data.accept) {
-          sendDuel(invite.from, { type: "invite_declined" });
-          return;
-        }
-        const room = duelRooms.get(invite.roomId);
-        if (currentRoomId || !room || room.status !== "waiting" || room.players.size !== 1 || ![...room.players.values()].some((p) => p.ws === invite.from)) {
-          fail("Ph\xF2ng kh\xF4ng c\xF2n kh\u1EA3 d\u1EE5ng.");
-          return;
-        }
-        ws.emit("message", Buffer.from(JSON.stringify({ type: "join_room", roomId: invite.roomId })));
-        return;
-      }
-      if (type === "join_room" || type === "find_match") {
-        if (currentRoomId) {
-          fail("H\xE3y r\u1EDDi ph\xF2ng hi\u1EC7n t\u1EA1i tr\u01B0\u1EDBc.");
-          return;
-        }
-        data.player = peer.player;
-        data.questionCount = [5, 10, 15, 20].includes(data.questionCount) ? data.questionCount : 5;
-        data.category = typeof data.category === "string" ? data.category.slice(0, 80) : "all";
-        if (type === "join_room" && quickMatchWaitingQueue?.ws === ws) quickMatchWaitingQueue = null;
-      }
       if (type === "join_room") {
         const { roomId: rawRoomId, player, questionCount = 5, category = "all" } = data;
         const pId = player?.id || `player-${Date.now()}`;
@@ -2333,12 +1938,19 @@ wss.on("connection", (ws) => {
         if (targetRoomId) {
           room = duelRooms.get(targetRoomId);
           if (!room) {
-            fail("Ph\xF2ng kh\xF4ng t\u1ED3n t\u1EA1i ho\u1EB7c \u0111\xE3 \u0111\xF3ng.");
-            return;
-          }
-          if (room.status !== "waiting") {
-            fail("Tr\u1EADn \u0111\u1EA5u \u0111\xE3 b\u1EAFt \u0111\u1EA7u.");
-            return;
+            room = {
+              roomId: targetRoomId,
+              status: "waiting",
+              category: category || "all",
+              questionCount: questionCount || 5,
+              players: /* @__PURE__ */ new Map(),
+              questions: [],
+              currentRound: 0,
+              roundTimerSeconds: 60,
+              firstCorrectAnswers: /* @__PURE__ */ new Map(),
+              rematchVotes: /* @__PURE__ */ new Map()
+            };
+            duelRooms.set(targetRoomId, room);
           }
         } else {
           targetRoomId = generateDuelRoomId();
@@ -2366,8 +1978,6 @@ wss.on("connection", (ws) => {
           return;
         }
         currentRoomId = targetRoomId;
-        peer.roomId = targetRoomId;
-        publishLobby();
         currentPlayerId = pId;
         const isHost = room.players.size === 0 || room.players.has(pId) && room.players.get(pId).isHost;
         room.players.set(pId, {
@@ -2409,12 +2019,12 @@ wss.on("connection", (ws) => {
           const waitingItem = quickMatchWaitingQueue;
           quickMatchWaitingQueue = null;
           const newRoomId = generateDuelRoomId();
-          const matchQuestions = pickDuelQuestions(waitingItem.questionCount, waitingItem.category);
+          const matchQuestions = pickDuelQuestions(questionCount, category);
           const room = {
             roomId: newRoomId,
             status: "in_progress",
-            category: waitingItem.category,
-            questionCount: matchQuestions.length,
+            category,
+            questionCount,
             players: /* @__PURE__ */ new Map(),
             questions: matchQuestions,
             currentRound: 0,
@@ -2437,9 +2047,6 @@ wss.on("connection", (ws) => {
             typingLength: 0
           });
           currentRoomId = newRoomId;
-          peer.roomId = newRoomId;
-          waitingItem.bindRoom(newRoomId);
-          publishLobby();
           currentPlayerId = pId;
           room.players.set(pId, {
             ws,
@@ -2467,11 +2074,7 @@ wss.on("connection", (ws) => {
             ws,
             player: { id: pId, name: pName, avatar_url: pAvatar },
             category,
-            questionCount,
-            bindRoom: (roomId) => {
-              currentRoomId = roomId;
-              peer.roomId = roomId;
-            }
+            questionCount
           };
           currentPlayerId = pId;
           ws.send(JSON.stringify({ type: "waiting_in_queue", message: "\u0110ang t\xECm ki\u1EBFm \u0111\u1ED1i th\u1EE7 tr\u1EF1c tuy\u1EBFn..." }));
@@ -2496,8 +2099,8 @@ wss.on("connection", (ws) => {
         if (!room || room.status !== "waiting") return;
         const host = room.players.get(currentPlayerId);
         if (!host || !host.isHost) return;
-        if ([5, 10, 15, 20].includes(data.questionCount)) room.questionCount = data.questionCount;
-        if (typeof data.category === "string") room.category = data.category.slice(0, 80);
+        if (data.questionCount) room.questionCount = data.questionCount;
+        if (data.category) room.category = data.category;
         broadcastRoomState(room);
       } else if (type === "start_game") {
         if (!currentRoomId || !currentPlayerId) return;
@@ -2508,12 +2111,7 @@ wss.on("connection", (ws) => {
           ws.send(JSON.stringify({ type: "error", message: "Ch\u1EC9 ch\u1EE7 ph\xF2ng m\u1EDBi c\xF3 th\u1EC3 b\u1EAFt \u0111\u1EA7u tr\u1EADn \u0111\u1EA5u!" }));
           return;
         }
-        if (room.status !== "waiting" || room.players.size !== 2 || ![...room.players.values()].every((p) => p.isReady)) {
-          fail("C\u1EA7n \u0111\u1EE7 hai ng\u01B0\u1EDDi v\xE0 c\u1EA3 hai s\u1EB5n s\xE0ng.");
-          return;
-        }
         room.questions = pickDuelQuestions(room.questionCount, room.category);
-        room.questionCount = room.questions.length;
         room.status = "countdown";
         room.currentRound = 0;
         room.firstCorrectAnswers.clear();
@@ -2529,8 +2127,7 @@ wss.on("connection", (ws) => {
         }
         broadcastRoomState(room);
         let count = 3;
-        broadcastToRoom(room, { type: "countdown_tick", count: 3 });
-        const countdownTimer = room.countdownInterval = setInterval(() => {
+        const countdownTimer = setInterval(() => {
           count--;
           if (count > 0) {
             broadcastToRoom(room, { type: "countdown_tick", count });
@@ -2549,10 +2146,6 @@ wss.on("connection", (ws) => {
         const player = room.players.get(currentPlayerId);
         if (!player || player.isFinished) return;
         const { questionIndex, answer } = data;
-        if (questionIndex !== player.currentQuestionIndex || typeof answer !== "string" || answer.length > 2e3) {
-          fail("C\xE2u tr\u1EA3 l\u1EDDi kh\xF4ng h\u1EE3p l\u1EC7.");
-          return;
-        }
         const currentQ = room.questions[questionIndex];
         if (!currentQ) return;
         const normUser = normalizeSentenceServer(answer);
@@ -2699,10 +2292,7 @@ wss.on("connection", (ws) => {
       } else if (type === "request_rematch") {
         if (!currentRoomId || !currentPlayerId) return;
         const room = duelRooms.get(currentRoomId);
-        if (!room || room.status !== "finished" || room.players.size !== 2) {
-          fail("C\u1EA7n \u0111\u1EE7 hai ng\u01B0\u1EDDi \u0111\u1EC3 t\xE1i \u0111\u1EA5u.");
-          return;
-        }
+        if (!room) return;
         room.rematchVotes.set(currentPlayerId, true);
         let allAgreed = room.players.size > 0;
         for (const p of room.players.values()) {
@@ -2728,8 +2318,7 @@ wss.on("connection", (ws) => {
           }
           broadcastRoomState(room);
           let count = 3;
-          broadcastToRoom(room, { type: "countdown_tick", count: 3 });
-          const cd = room.countdownInterval = setInterval(() => {
+          const cd = setInterval(() => {
             count--;
             if (count > 0) {
               broadcastToRoom(room, { type: "countdown_tick", count });
@@ -2754,17 +2343,11 @@ wss.on("connection", (ws) => {
           if (room) {
             room.players.delete(currentPlayerId);
             if (room.players.size === 0) {
-              clearInterval(room.countdownInterval);
               duelRooms.delete(currentRoomId);
             } else {
               const remainingPlayer = Array.from(room.players.values())[0];
               if (remainingPlayer) {
                 remainingPlayer.isHost = true;
-                if (room.status === "in_progress" || room.status === "countdown") {
-                  clearInterval(room.countdownInterval);
-                  room.status = "finished";
-                  room.winnerId = remainingPlayer.id;
-                }
               }
               broadcastRoomState(room);
               broadcastToRoom(room, {
@@ -2774,8 +2357,7 @@ wss.on("connection", (ws) => {
             }
           }
           currentRoomId = null;
-          peer.roomId = null;
-          publishLobby();
+          currentPlayerId = null;
         }
       }
     } catch (err) {
@@ -2783,10 +2365,6 @@ wss.on("connection", (ws) => {
     }
   });
   ws.on("close", () => {
-    aliveSockets.delete(ws);
-    lobbyPeers.delete(ws);
-    for (const [id, invite] of duelInvites) if (invite.from === ws || invite.to === ws) duelInvites.delete(id);
-    publishLobby();
     if (quickMatchWaitingQueue && quickMatchWaitingQueue.ws === ws) {
       quickMatchWaitingQueue = null;
     }
@@ -2795,17 +2373,11 @@ wss.on("connection", (ws) => {
       if (room) {
         room.players.delete(currentPlayerId);
         if (room.players.size === 0) {
-          clearInterval(room.countdownInterval);
           duelRooms.delete(currentRoomId);
         } else {
           const remainingPlayer = Array.from(room.players.values())[0];
           if (remainingPlayer) {
             remainingPlayer.isHost = true;
-            if (room.status === "in_progress" || room.status === "countdown") {
-              clearInterval(room.countdownInterval);
-              room.status = "finished";
-              room.winnerId = remainingPlayer.id;
-            }
           }
           broadcastRoomState(room);
           broadcastToRoom(room, {
@@ -2817,7 +2389,7 @@ wss.on("connection", (ws) => {
     }
   });
 });
-async function start2() {
+async function start() {
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -2837,7 +2409,7 @@ async function start2() {
   });
 }
 if (!process.env.VERCEL) {
-  start2();
+  start();
 }
 var server_default = app;
 export {

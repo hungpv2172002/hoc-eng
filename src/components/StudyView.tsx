@@ -41,6 +41,7 @@ import {
   shuffleQuestions,
 } from '../lib/questionRotation';
 import { INITIAL_QUESTIONS } from '../data/initialQuestions';
+import { WORD_QUESTIONS } from '../data/wordQuestions';
 import { AudioButton, playSpeech, SPEED_OPTIONS } from './AudioButton';
 import { CareerTrackSelector } from './CareerTrackSelector';
 import { VipPromptModal } from './VipPromptModal';
@@ -49,6 +50,7 @@ import { WordLookupModal } from './WordLookupModal';
 
 
 interface StudyViewProps {
+  initialLevel?: CEFRLevel;
   questions: Question[];
   profile: Profile | null;
   todayCount: number;
@@ -58,6 +60,7 @@ interface StudyViewProps {
   todayDateString?: string;
   onOpenBattle?: () => void;
   onOpenDuel?: () => void;
+  onOpenKids?: () => void;
   customTracks?: CareerTrackInfo[];
 }
 
@@ -76,6 +79,7 @@ export function speakText(text: string, rate: number = 0.9) {
 }
 
 export const StudyView: React.FC<StudyViewProps> = ({
+  initialLevel,
   questions,
   profile,
   todayCount,
@@ -85,6 +89,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
   todayDateString,
   onOpenBattle,
   onOpenDuel,
+  onOpenKids,
   customTracks = [],
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -118,6 +123,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   // 3. Quản lý Trình độ người học (all, A1, A2, B1, B2, C1)
   const [selectedLevel, setSelectedLevel] = useState<CEFRLevel>(() => {
+    if (initialLevel) return initialLevel;
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('translation_user_cefr_level');
@@ -128,6 +134,25 @@ export const StudyView: React.FC<StudyViewProps> = ({
     }
     return 'all';
   });
+  const [practiceMode, setPracticeMode] = useState<'sentence' | 'word'>(() => {
+    try {
+      const saved = localStorage.getItem('translation_practice_mode');
+      return saved === 'word' ? 'word' : 'sentence';
+    } catch (e) {
+      return 'sentence';
+    }
+  });
+
+  const handlePracticeModeChange = (mode: 'sentence' | 'word') => {
+    setPracticeMode(mode);
+    try {
+      localStorage.setItem('translation_practice_mode', mode);
+    } catch (e) {}
+    setCurrentIndex(0);
+    setUserAnswer('');
+    setResultState('idle');
+    setShuffleSeed((prev) => prev + 1);
+  };
 
   const handleSelectLevel = (level: CEFRLevel) => {
     setSelectedLevel(level);
@@ -187,17 +212,22 @@ export const StudyView: React.FC<StudyViewProps> = ({
     return [...questions, ...supplement];
   }, [questions]);
 
+  // Chế độ dịch từ dùng ngân hàng độc lập, không tách từ đầu của câu dài.
+  const activeQuestionBank = practiceMode === 'word' ? WORD_QUESTIONS : allAvailableQuestions;
+
   // Đếm số lượng câu hỏi theo từng chuyên ngành
   const questionCounts = useMemo(() => {
-    const counts: Record<CareerCategory, number> = Object.fromEntries(careerTracks.map((track) => [track.id, 0]));
-    allAvailableQuestions.forEach((q) => {
+    const counts: Record<CareerCategory, number> = Object.fromEntries(
+      careerTracks.map((track) => [track.id, 0])
+    );
+    activeQuestionBank.forEach((q) => {
       const cat = q.category || 'general';
       if (counts[cat] !== undefined) {
         counts[cat]++;
       }
     });
     return counts;
-  }, [allAvailableQuestions, careerTracks]);
+  }, [activeQuestionBank, careerTracks]);
 
   // Đếm số lượng câu hỏi theo từng trình độ CEFR cho chuyên ngành hiện tại
   const levelCounts = useMemo(() => {
@@ -209,10 +239,10 @@ export const StudyView: React.FC<StudyViewProps> = ({
       B2: 0,
       C1: 0,
     };
-    const catPool = allAvailableQuestions.filter(
+    const catPool = activeQuestionBank.filter(
       (q) => (q.category || 'general') === selectedCategory
     );
-    const targetPool = catPool.length > 0 ? catPool : allAvailableQuestions;
+    const targetPool = catPool.length > 0 ? catPool : activeQuestionBank;
     counts.all = targetPool.length;
     targetPool.forEach((q) => {
       const lvl = getQuestionLevel(q);
@@ -221,31 +251,53 @@ export const StudyView: React.FC<StudyViewProps> = ({
       }
     });
     return counts;
-  }, [allAvailableQuestions, selectedCategory]);
+  }, [activeQuestionBank, selectedCategory]);
 
   // Lọc câu hỏi theo chuyên ngành và TRÌNH ĐỘ (TỰ ĐỘNG ĐẢO NGẪU NHIÊN MỖI KHI REFRESH)
   const filteredQuestions = useMemo(() => {
-    let pool = allAvailableQuestions.filter(
+    let pool = activeQuestionBank.filter(
       (q) => (q.category || 'general') === selectedCategory
     );
     if (pool.length === 0) {
-      pool = INITIAL_QUESTIONS.filter(
+      pool = activeQuestionBank.filter(
         (q) => (q.category || 'general') === selectedCategory
       );
     }
-
+    if (pool.length === 0) {
+      pool = activeQuestionBank;
+    }
 
     // Lọc theo trình độ A1, A2, B1, B2, C1
     if (selectedLevel !== 'all') {
-      pool = pool.filter((q) => getQuestionLevel(q) === selectedLevel);
+      const levelMatches = pool.filter((q) => getQuestionLevel(q) === selectedLevel);
+      if (levelMatches.length > 0) {
+        pool = levelMatches;
+      } else {
+        // Fallback sang tất cả các câu của trình độ đó nếu chuyên ngành hiện tại chưa có
+        const globalLevelMatches = activeQuestionBank.filter(
+          (q) => getQuestionLevel(q) === selectedLevel
+        );
+        if (globalLevelMatches.length > 0) {
+          pool = globalLevelMatches;
+        }
+      }
     }
 
     // Tự động xáo trộn ngẫu nhiên hoàn toàn (Fisher-Yates) mỗi lần refresh hoặc đổi bộ lọc
     return shuffleQuestions(pool);
-  }, [allAvailableQuestions, selectedCategory, selectedLevel, shuffleSeed]);
+  }, [activeQuestionBank, selectedCategory, selectedLevel, shuffleSeed, practiceMode]);
 
   // Reset vị trí và nạp ngay câu đầu tiên khi khách hàng ấn vào Ngành chuyên sâu
   const handleSelectCategory = (cat: CareerCategory) => {
+    const track = careerTracks.find((item) => item.id === cat);
+    if (!profile) {
+      onOpenAuth();
+      return;
+    }
+    if (track?.isVipOnly && !hasVipAccess) {
+      setVipModalTrack(track);
+      return;
+    }
     setSelectedCategory(cat);
     setCurrentIndex(0);
     setUserAnswer('');
@@ -254,9 +306,27 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
   const currentQuestion = filteredQuestions[currentIndex] || filteredQuestions[0];
 
+  const wordPrompt = useMemo(() => {
+    if (!currentQuestion) return { source: '', target: '' };
+    // Mỗi mục trong WORD_QUESTIONS đã là một từ/cụm từ hoàn chỉnh.
+    const source = currentQuestion.vi.trim();
+    const target = currentQuestion.answers?.[0]?.trim() || '';
+    return { source, target };
+  }, [currentQuestion]);
+
   // Danh sách từ gợi ý nhanh từ câu trả lời (hỗ trợ thao tác chạm từ siêu mượt trên điện thoại)
   const wordChips = useMemo(() => {
     if (!currentQuestion?.answers?.[0]) return [];
+    if (practiceMode === 'word') {
+      const candidates = WORD_QUESTIONS.filter(
+        (item) => item.id !== currentQuestion.id && item.level === currentQuestion.level && item.category === currentQuestion.category,
+      );
+      const start = currentQuestion.id % Math.max(candidates.length, 1);
+      const distractors = [...candidates.slice(start), ...candidates.slice(0, start)]
+        .slice(0, 3)
+        .map((item) => item.answers[0]);
+      return [wordPrompt.target, ...distractors].filter(Boolean);
+    }
     const rawWords = currentQuestion.answers[0]
       .replace(/[.,!?;:()"]/g, '')
       .split(/\s+/)
@@ -267,10 +337,13 @@ export const StudyView: React.FC<StudyViewProps> = ({
       const hashB = (b.charCodeAt(0) * 17 + b.length) % 31;
       return hashA - hashB;
     });
-  }, [currentQuestion?.id]);
+  }, [currentQuestion?.id, practiceMode, wordPrompt.target]);
 
   const handleChipClick = (word: string) => {
     setUserAnswer((prev) => {
+      // A word/phrase exercise has exactly one answer. Selecting a choice
+      // replaces the current input instead of appending unrelated choices.
+      if (practiceMode === 'word') return word;
       const trimmed = prev.trim();
       return trimmed ? `${trimmed} ${word}` : word;
     });
@@ -306,13 +379,16 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
     setSubmitting(true);
     const normalizedInput = normalizeSentence(userAnswer);
-    const isCorrect = currentQuestion.answers.some(
+    const acceptedAnswers = practiceMode === 'word'
+      ? [wordPrompt.target]
+      : currentQuestion.answers;
+    const isCorrect = acceptedAnswers.some(
       (ans) => normalizeSentence(ans) === normalizedInput
     );
 
     if (isCorrect) {
       setResultState('correct');
-      playSpeech(currentQuestion.answers[0], audioSpeed);
+      playSpeech(practiceMode === 'word' ? wordPrompt.target : currentQuestion.answers[0], audioSpeed);
 
       // Pháo hoa ăn mừng
       confetti({
@@ -360,6 +436,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
         selectedCategory={selectedCategory}
         onSelectCategory={handleSelectCategory}
         profile={profile}
+        onOpenAuth={onOpenAuth}
         onOpenVipPrompt={(track) => setVipModalTrack(track)}
         questionCounts={questionCounts}
         tracks={careerTracks}
@@ -371,6 +448,13 @@ export const StudyView: React.FC<StudyViewProps> = ({
         onSelectLevel={handleSelectLevel}
         levelCounts={levelCounts}
       />
+
+      {onOpenKids && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-sky-50 p-4 dark:border-amber-900/60 dark:from-amber-950/30 dark:to-sky-950/30">
+          <div className="flex items-center gap-3"><span className="text-3xl" aria-hidden="true">🧸</span><div><p className="font-black text-amber-900 dark:text-amber-200">Khu trẻ em lớp 1 đến lớp 6</p><p className="text-xs text-amber-800/80 dark:text-amber-300/80">Nhìn hình hoặc nghe âm thanh để đoán từ tiếng Anh.</p></div></div>
+          <button type="button" onClick={onOpenKids} className="rounded-xl bg-amber-500 px-4 py-2 text-xs font-black text-white shadow-sm transition hover:bg-amber-600">Mở khu trẻ em</button>
+        </div>
+      )}
 
       {/* BANNER MINI-GAME ĐẤU TRƯỜNG 1V1 (THÁCH ĐẤU BẠN BÈ) */}
       {onOpenDuel && (
@@ -462,12 +546,6 @@ export const StudyView: React.FC<StudyViewProps> = ({
         track={vipModalTrack}
         profile={profile}
         onOpenAuth={onOpenAuth}
-        onTrySample={() => {
-          if (vipModalTrack) {
-            handleSelectCategory(vipModalTrack.id);
-            setVipModalTrack(null);
-          }
-        }}
       />
 
       {/* THÔNG BÁO KHI ĐANG HỌC CHỦ ĐỀ CHUYÊN NGÀNH */}
@@ -527,7 +605,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
       ) : !currentQuestion ? (
         <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 w-full min-w-0">
           <RefreshCw className="w-8 h-8 text-indigo-600 dark:text-indigo-400 animate-spin mx-auto mb-3" />
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Chưa có câu hỏi cho ngành và trình độ này. Bạn có thể đổi bộ lọc hoặc thêm câu trong Cài đặt quản trị.</p>
+          <p className="text-slate-500 dark:text-slate-400 font-medium">Đang tải danh sách câu hỏi...</p>
         </div>
       ) : (
         /* 2. GIAO DIỆN HỌC BÀI */
@@ -650,7 +728,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
                     type="button"
                     onClick={() => {
                       handleSpeedChange(opt.value);
-                      playSpeech(currentQuestion.answers[0], opt.value);
+                      playSpeech(practiceMode === 'word' ? wordPrompt.target : currentQuestion.answers[0], opt.value);
                     }}
                     title={`${opt.label} - ${opt.desc}`}
                     className={`px-1.5 sm:px-2 py-0.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -665,11 +743,27 @@ export const StudyView: React.FC<StudyViewProps> = ({
               </div>
             </div>
 
+            {/* Chọn kiểu dịch ngay cạnh câu đang luyện để người học đổi nhanh */}
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-indigo-100 bg-indigo-50/70 p-2.5 dark:border-indigo-900/70 dark:bg-indigo-950/30" aria-label="Chế độ luyện dịch">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Kiểu luyện dịch</p>
+                <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{practiceMode === 'sentence' ? 'Dịch nguyên câu' : 'Dịch từ sang từ'}</p>
+              </div>
+              <div className="flex rounded-lg border border-indigo-200 bg-white/80 p-1 dark:border-indigo-800 dark:bg-slate-900/80" role="group" aria-label="Chọn kiểu luyện dịch">
+                <button type="button" onClick={() => handlePracticeModeChange('sentence')} className={`rounded-md px-2.5 py-1.5 text-[11px] font-bold transition-all ${practiceMode === 'sentence' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300'}`}>
+                  Dịch nguyên câu
+                </button>
+                <button type="button" onClick={() => handlePracticeModeChange('word')} className={`rounded-md px-2.5 py-1.5 text-[11px] font-bold transition-all ${practiceMode === 'word' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 dark:text-slate-300'}`}>
+                  Dịch từ sang từ
+                </button>
+              </div>
+            </div>
+
             {/* Câu tiếng Việt in đậm */}
             <div className="mb-4 sm:mb-5 w-full min-w-0">
               <div className="flex flex-wrap items-center justify-between mb-2 gap-2">
                 <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                  Dịch sang tiếng Anh:
+                  {practiceMode === 'word' ? 'Dịch từ trọng tâm sang tiếng Anh:' : 'Dịch sang tiếng Anh:'}
                 </span>
 
                 <div className="flex items-center gap-1.5 sm:gap-2">
@@ -710,7 +804,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
 
                   {/* Nút Nghe mẫu */}
                   <AudioButton
-                    text={currentQuestion.answers[0]}
+                    text={practiceMode === 'word' ? wordPrompt.target : currentQuestion.answers[0]}
                     speed={audioSpeed}
                     onSpeedChange={handleSpeedChange}
                     size="sm"
@@ -719,7 +813,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
               </div>
 
               <h2 className="text-lg sm:text-2xl font-extrabold text-slate-900 dark:text-white leading-snug break-words">
-                {currentQuestion.vi}
+                {practiceMode === 'word' ? wordPrompt.source : currentQuestion.vi}
               </h2>
             </div>
 
@@ -791,7 +885,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
                       handleCheck(e);
                     }
                   }}
-                  placeholder="Gõ câu dịch tiếng Anh hoặc chạm các từ gợi ý bên dưới..."
+                  placeholder={practiceMode === 'word' ? 'Gõ một từ tiếng Anh hoặc chọn từ bên dưới...' : 'Gõ câu dịch tiếng Anh hoặc chạm các từ gợi ý bên dưới...'}
                   className="w-full p-3.5 sm:p-4 pr-10 text-base sm:text-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:bg-white dark:focus:bg-slate-950 focus:border-indigo-600 dark:focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 dark:focus:ring-indigo-950/50 outline-hidden transition-all resize-none font-medium leading-relaxed"
                 />
 
@@ -815,7 +909,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
               {wordChips.length > 0 && (
                 <div className="p-3 bg-slate-50/80 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800 rounded-2xl space-y-2">
                   <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                    <span>Chạm từ để thêm nhanh vào câu:</span>
+                      <span>{practiceMode === 'word' ? 'Chạm từ để chọn đáp án:' : 'Chạm từ để thêm nhanh vào câu:'}</span>
                     {userAnswer.trim() && (
                       <button
                         type="button"
@@ -887,7 +981,7 @@ export const StudyView: React.FC<StudyViewProps> = ({
                       </span>
                     </div>
                     <AudioButton
-                      text={currentQuestion.answers[0]}
+                      text={practiceMode === 'word' ? wordPrompt.target : currentQuestion.answers[0]}
                       speed={audioSpeed}
                       onSpeedChange={handleSpeedChange}
                       size="sm"
@@ -904,9 +998,9 @@ export const StudyView: React.FC<StudyViewProps> = ({
                       Chưa chính xác, hãy thử lại hoặc xem câu mẫu:
                     </strong>
                     <div className="flex items-center justify-between p-2.5 bg-white/90 dark:bg-slate-900/90 border border-rose-200 dark:border-rose-800 rounded-xl font-mono text-xs text-rose-800 dark:text-rose-300">
-                      <span>"{currentQuestion.answers[0]}"</span>
+                      <span>"{practiceMode === 'word' ? wordPrompt.target : currentQuestion.answers[0]}"</span>
                       <AudioButton
-                        text={currentQuestion.answers[0]}
+                        text={practiceMode === 'word' ? wordPrompt.target : currentQuestion.answers[0]}
                         speed={audioSpeed}
                         onSpeedChange={handleSpeedChange}
                         size="sm"

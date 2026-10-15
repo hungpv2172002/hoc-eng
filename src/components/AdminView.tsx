@@ -1,7 +1,7 @@
-import { QuestionEditor } from './QuestionEditor';
 import React, { useState, useEffect, useMemo } from 'react';
-import { Profile, AppSettings, Customer, CustomerStatus, CustomerPackage, ThemeColor, BgTheme, CareerTrackInfo, CAREER_TRACKS, Question } from '../types';
+import { Profile, AppSettings, Customer, CustomerStatus, CustomerPackage, ThemeColor, BgTheme, CareerTrackInfo, CAREER_TRACKS } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
+import { KidsGrade, KidsWord } from '../lib/kidsLearning';
 import { AppIcon, PRESET_ICONS, PRESET_EMOJIS } from './AppIcon';
 import { FooterContact } from './FooterContact';
 import {
@@ -44,10 +44,10 @@ import {
   Sliders,
   Award,
   Briefcase,
+  BookOpen,
 } from 'lucide-react';
 
 interface AdminViewProps {
-  onQuestionAdded?: (question: Question) => void;
   currentUser: Profile | null;
   profiles: Profile[];
   onToggleVip: (user: Profile) => Promise<void>;
@@ -60,6 +60,8 @@ interface AdminViewProps {
   onUpdateProfiles?: (newProfiles: Profile[]) => void;
   onOpenAuth?: () => void;
 }
+
+type KidsWordDraft = KidsWord & { draftId: string; include: boolean };
 
 // Khách hàng mẫu ban đầu nếu máy chưa có dữ liệu CRM
 const INITIAL_CUSTOMERS: Customer[] = [
@@ -142,10 +144,9 @@ export const AdminView: React.FC<AdminViewProps> = ({
   onOpenGuide,
   onUpdateProfiles,
   onOpenAuth,
-  onQuestionAdded,
 }) => {
   // Tab quản lý: 'interface' (Sửa giao diện) | 'accounts' (Quản lý tài khoản) | 'customers' (Quản lý khách hàng) | 'ai_tools' (Công cụ AI)
-  const [activeTab, setActiveTab] = useState<'interface' | 'tracks' | 'accounts' | 'customers' | 'ai_tools'>('interface');
+  const [activeTab, setActiveTab] = useState<'interface' | 'tracks' | 'accounts' | 'customers' | 'ai_tools' | 'kids_ai'>('interface');
 
   // Toast thông báo
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -192,35 +193,64 @@ export const AdminView: React.FC<AdminViewProps> = ({
   const [trackSamplePhrase, setTrackSamplePhrase] = useState('');
   const [isSavingTracks, setIsSavingTracks] = useState(false);
   const customCareerTracks = settings?.customCareerTracks || [];
+
   const saveCustomCareerTracks = async (nextTracks: CareerTrackInfo[]) => {
     if (!onSaveSettings) throw new Error('Không thể lưu cài đặt trong phiên này.');
     if (!isSupabaseConfigured) throw new Error('Chưa kết nối Supabase; chủ đề chưa được lưu.');
     await onSaveSettings({ ...(settings || {} as AppSettings), customCareerTracks: nextTracks });
   };
+
   const handleAddCareerTrack = async (event: React.FormEvent) => {
     event.preventDefault();
     const normalizedId = trackId.trim().toLowerCase();
-    if (!trackName.trim() || !trackDescription.trim() || !normalizedId) { setToast({ type: 'error', text: 'Vui lòng nhập tên, mã và mô tả chủ đề.' }); return; }
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalizedId)) { setToast({ type: 'error', text: 'Mã chủ đề chỉ gồm chữ thường, số và dấu gạch nối.' }); return; }
-    if ([...CAREER_TRACKS, ...customCareerTracks].some((track) => track.id === normalizedId)) { setToast({ type: 'error', text: 'Mã chủ đề đã tồn tại. Hãy chọn mã khác.' }); return; }
-    const newTrack: CareerTrackInfo = { id: normalizedId, name: trackName.trim(), icon: trackIcon, description: trackDescription.trim(), isVipOnly: true, samplePhrase: trackSamplePhrase.trim() || trackName.trim(), badge: 'Dành riêng cho VIP' };
+    if (!trackName.trim() || !trackDescription.trim() || !normalizedId) {
+      setToast({ type: 'error', text: 'Vui lòng nhập tên, mã và mô tả chủ đề.' });
+      return;
+    }
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalizedId)) {
+      setToast({ type: 'error', text: 'Mã chủ đề chỉ gồm chữ thường, số và dấu gạch nối.' });
+      return;
+    }
+    if ([...CAREER_TRACKS, ...customCareerTracks].some((track) => track.id === normalizedId)) {
+      setToast({ type: 'error', text: 'Mã chủ đề đã tồn tại. Hãy chọn mã khác.' });
+      return;
+    }
+
+    const newTrack: CareerTrackInfo = {
+      id: normalizedId,
+      name: trackName.trim(),
+      icon: trackIcon,
+      description: trackDescription.trim(),
+      isVipOnly: true,
+      samplePhrase: trackSamplePhrase.trim() || trackName.trim(),
+      badge: 'Dành riêng cho VIP',
+    };
     setIsSavingTracks(true);
     try {
       await saveCustomCareerTracks([...customCareerTracks, newTrack]);
-      setTrackName(''); setTrackId(''); setTrackDescription(''); setTrackSamplePhrase('');
-      setToast({ type: 'success', text: 'Đã lưu ngành chuyên sâu.' });
-    } catch (error: any) { setToast({ type: 'error', text: error.message || 'Không thể lưu chủ đề.' }); }
-    finally { setIsSavingTracks(false); }
-  };
-  const handleDeleteCareerTrack = async (id: string) => {
-    setIsSavingTracks(true);
-    try {
-      await saveCustomCareerTracks(customCareerTracks.filter((track) => track.id !== id));
-      setToast({ type: 'success', text: 'Đã xóa chủ đề.' });
-    } catch (error: any) { setToast({ type: 'error', text: error.message || 'Không thể xóa chủ đề.' }); }
-    finally { setIsSavingTracks(false); }
+      setTrackName('');
+      setTrackId('');
+      setTrackDescription('');
+      setTrackSamplePhrase('');
+      setToast({ type: 'success', text: 'Đã lưu chủ đề chuyên sâu vào Supabase.' });
+    } catch (error: any) {
+      setToast({ type: 'error', text: error.message || 'Không thể lưu chủ đề.' });
+    } finally {
+      setIsSavingTracks(false);
+    }
   };
 
+  const handleDeleteCareerTrack = async (trackIdToDelete: string) => {
+    setIsSavingTracks(true);
+    try {
+      await saveCustomCareerTracks(customCareerTracks.filter((track) => track.id !== trackIdToDelete));
+      setToast({ type: 'success', text: 'Đã xóa chủ đề.' });
+    } catch (error: any) {
+      setToast({ type: 'error', text: error.message || 'Không thể xóa chủ đề.' });
+    } finally {
+      setIsSavingTracks(false);
+    }
+  };
 
   const [isSavingInterface, setIsSavingInterface] = useState(false);
 
@@ -320,6 +350,104 @@ export const AdminView: React.FC<AdminViewProps> = ({
 
   // ================= TAB 4: CÔNG CỤ AI =================
   const [selectedGenCategory, setSelectedGenCategory] = useState<string>('general');
+  const [kidsGrade, setKidsGrade] = useState<KidsGrade>(1);
+  const [kidsTopic, setKidsTopic] = useState('animals');
+  const [kidsWordCount, setKidsWordCount] = useState(10);
+  const [kidsDrafts, setKidsDrafts] = useState<KidsWordDraft[]>([]);
+  const [kidsSavedWords, setKidsSavedWords] = useState<KidsWord[]>([]);
+  const [isGeneratingKidsWords, setIsGeneratingKidsWords] = useState(false);
+  const [isSavingKidsWords, setIsSavingKidsWords] = useState(false);
+
+  useEffect(() => {
+    if (activeTab !== 'kids_ai') return;
+    let cancelled = false;
+    fetch('/api/kids/words')
+      .then((response) => response.ok ? response.json() : null)
+      .then((result) => {
+        if (!cancelled && Array.isArray(result?.data)) setKidsSavedWords(result.data);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [activeTab]);
+
+  const getKidsAdminAccessToken = async () => {
+    if (!isSupabaseConfigured) throw new Error('Chưa kết nối Supabase.');
+    const { data, error } = await supabase.auth.getSession();
+    if (error || !data.session?.access_token) throw new Error('Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại tài khoản quản trị.');
+    return data.session.access_token;
+  };
+
+  const handleGenerateKidsWords = async () => {
+    setIsGeneratingKidsWords(true);
+    try {
+      const accessToken = await getKidsAdminAccessToken();
+      const response = await fetch('/api/admin/kids-words/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ grade: kidsGrade, topic: kidsTopic, count: kidsWordCount }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'AI chưa tạo được từ vựng.');
+      const drafts = (result.data || []).map((word: KidsWord, index: number) => ({
+        ...word,
+        draftId: `${word.word}-${Date.now()}-${index}`,
+        include: true,
+      }));
+      setKidsDrafts(drafts);
+      setToast({
+        type: 'success',
+        text: drafts.length
+          ? `AI đã tạo ${drafts.length} từ nháp. Hãy kiểm tra nghĩa và hình trước khi lưu.`
+          : 'Các từ AI tạo đã có trong ngân hàng. Hãy chọn chủ đề khác.',
+      });
+    } catch (error: any) {
+      setToast({ type: 'error', text: error.message || 'Không tạo được từ vựng.' });
+    } finally {
+      setIsGeneratingKidsWords(false);
+      setTimeout(() => setToast(null), 5000);
+    }
+  };
+
+  const handleSaveKidsWords = async () => {
+    const selectedWords = kidsDrafts.filter((draft) => draft.include);
+    if (!selectedWords.length) {
+      setToast({ type: 'error', text: 'Hãy chọn ít nhất một từ để lưu.' });
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+    if (selectedWords.some((word) => !word.word.trim() || !word.meaning.trim() || !word.picture.trim())) {
+      setToast({ type: 'error', text: 'Mỗi từ cần có từ tiếng Anh, nghĩa tiếng Việt và emoji minh họa.' });
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+
+    setIsSavingKidsWords(true);
+    try {
+      const accessToken = await getKidsAdminAccessToken();
+      const response = await fetch('/api/admin/kids-words', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          words: selectedWords.map(({ word, meaning, picture }) => ({ word, meaning, picture, grades: [kidsGrade] })),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Không lưu được từ vựng.');
+      setKidsDrafts([]);
+      if (Array.isArray(result.data)) setKidsSavedWords((current) => [...current, ...result.data]);
+      setToast({
+        type: 'success',
+        text: result.savedCount
+          ? `Đã lưu ${result.savedCount} từ vào kho lớp ${kidsGrade}${result.duplicateCount ? `; bỏ qua ${result.duplicateCount} từ trùng` : ''}.`
+          : 'Các từ đã chọn đều có trong ngân hàng từ.',
+      });
+    } catch (error: any) {
+      setToast({ type: 'error', text: error.message || 'Không lưu được từ vựng.' });
+    } finally {
+      setIsSavingKidsWords(false);
+      setTimeout(() => setToast(null), 5000);
+    }
+  };
 
   // Quyền truy cập Admin: BẮT BUỘC ĐÚNG EMAIL hungpv2172002@gmail.com
   const isAdmin = currentUser?.email?.toLowerCase().trim() === 'hungpv2172002@gmail.com';
@@ -386,10 +514,7 @@ export const AdminView: React.FC<AdminViewProps> = ({
         text: `Đã lưu giao diện thành công! Tên ứng dụng: "${newSettings.appName}".`,
       });
     } catch (err: any) {
-      setToast({
-        type: 'error',
-        text: err?.message || 'Không lưu được cài đặt. Vui lòng thử lại.',
-      });
+      setToast({ type: 'error', text: err.message || 'Không thể lưu cài đặt giao diện.' });
     } finally {
       setIsSavingInterface(false);
       setTimeout(() => setToast(null), 5000);
@@ -795,8 +920,16 @@ export const AdminView: React.FC<AdminViewProps> = ({
           <span>1. Sửa Giao Diện Trang</span>
         </button>
 
-        <button onClick={() => setActiveTab('tracks')} className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${activeTab === 'tracks' ? 'bg-white dark:bg-slate-900 text-cyan-700 dark:text-cyan-400 shadow-sm' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-700/50'}`}>
-          <Briefcase className="w-4 h-4 text-cyan-600 dark:text-cyan-400" /><span>Câu hỏi & Ngành chuyên sâu</span>
+        <button
+          onClick={() => setActiveTab('tracks')}
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'tracks'
+              ? 'bg-white dark:bg-slate-900 text-cyan-700 dark:text-cyan-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-700/50'
+          }`}
+        >
+          <Briefcase className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+          <span>Chủ đề chuyên sâu</span>
         </button>
 
         <button
@@ -839,6 +972,18 @@ export const AdminView: React.FC<AdminViewProps> = ({
         >
           <Sparkles className="w-4 h-4 text-amber-500 dark:text-amber-400" />
           <span>4. Công Cụ Sinh Câu AI</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('kids_ai')}
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+            activeTab === 'kids_ai'
+              ? 'bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-400 shadow-sm'
+              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/50 dark:hover:bg-slate-700/50'
+          }`}
+        >
+          <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          <span>5. Từ vựng trẻ em AI</span>
         </button>
       </div>
 
@@ -1274,30 +1419,61 @@ export const AdminView: React.FC<AdminViewProps> = ({
         </div>
       )}
 
-      {/* ============================================================== */}
-      {/* ================= TAB 2: QUẢN LÝ TÀI KHOẢN =================== */}
-      {/* ============================================================== */}
       {activeTab === 'tracks' && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          <QuestionEditor tracks={[...CAREER_TRACKS, ...customCareerTracks]} onAdded={onQuestionAdded} />
           <section className="rounded-3xl border border-cyan-200 bg-white p-5 sm:p-7 shadow-xs dark:border-cyan-900 dark:bg-slate-900">
-            <div className="mb-5"><h2 className="text-xl font-black text-slate-900 dark:text-white">Thêm chủ đề ngành chuyên sâu</h2><p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Chủ đề sẽ xuất hiện trong bộ chọn luyện tập và được lưu cho toàn bộ website. Chủ đề mới mặc định dành cho VIP.</p></div>
+            <div className="mb-5">
+              <h2 className="text-xl font-black text-slate-900 dark:text-white">Thêm chủ đề ngành chuyên sâu</h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Chủ đề sẽ xuất hiện trong bộ chọn luyện tập và được lưu trên Supabase. Các chủ đề mới mặc định dành cho tài khoản VIP.</p>
+            </div>
             <form onSubmit={handleAddCareerTrack} className="grid gap-4 sm:grid-cols-2">
-              <label className="space-y-1 text-sm font-semibold">Tên chủ đề<input required maxLength={80} value={trackName} onChange={(e)=>{const n=e.target.value;setTrackName(n);setTrackId(n.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/đ/g,'d').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''));}} placeholder="Ví dụ: Tiếng Anh Y tế" className="mt-1 w-full rounded-xl border px-3 py-2.5" /></label>
-              <label className="space-y-1 text-sm font-semibold">Mã chủ đề<input required maxLength={80} value={trackId} onChange={(e)=>setTrackId(e.target.value)} placeholder="tieng-anh-y-te" className="mt-1 w-full rounded-xl border px-3 py-2.5" /></label>
-              <label className="space-y-1 text-sm font-semibold">Mô tả<input required maxLength={300} value={trackDescription} onChange={(e)=>setTrackDescription(e.target.value)} placeholder="Các tình huống giao tiếp trong ngành..." className="mt-1 w-full rounded-xl border px-3 py-2.5" /></label>
-              <label className="space-y-1 text-sm font-semibold">Cụm từ minh họa (không bắt buộc)<input value={trackSamplePhrase} onChange={(e)=>setTrackSamplePhrase(e.target.value)} placeholder="Patient care, diagnosis, appointment" className="mt-1 w-full rounded-xl border px-3 py-2.5" /></label>
-              <label className="space-y-1 text-sm font-semibold">Biểu tượng<select value={trackIcon} onChange={(e)=>setTrackIcon(e.target.value)} className="mt-1 w-full rounded-xl border px-3 py-2.5"><option value="Briefcase">Công việc</option><option value="MessageSquare">Giao tiếp</option><option value="Code2">Công nghệ</option><option value="Hotel">Dịch vụ</option></select></label>
-              <div className="flex items-end"><button disabled={isSavingTracks} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-5 py-3 font-bold text-white disabled:opacity-50"><Plus className="h-4 w-4" />{isSavingTracks ? 'Đang lưu...' : 'Thêm chủ đề'}</button></div>
+              <label className="space-y-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Tên chủ đề
+                <input required value={trackName} onChange={(event) => {
+                  const name = event.target.value;
+                  setTrackName(name);
+                  setTrackId(name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/đ/g, 'd').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''));
+                }} placeholder="Ví dụ: Tiếng Anh Y tế" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Mã chủ đề
+                <input required value={trackId} onChange={(event) => setTrackId(event.target.value)} placeholder="vi-du-tieng-anh-y-te" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Mô tả
+                <input required value={trackDescription} onChange={(event) => setTrackDescription(event.target.value)} placeholder="Các tình huống giao tiếp trong ngành..." className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Cụm từ minh họa (không bắt buộc)
+                <input value={trackSamplePhrase} onChange={(event) => setTrackSamplePhrase(event.target.value)} placeholder="Patient care, diagnosis, appointment" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800" />
+              </label>
+              <label className="space-y-1 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                Biểu tượng
+                <select value={trackIcon} onChange={(event) => setTrackIcon(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800">
+                  <option value="Briefcase">Công việc</option><option value="MessageSquare">Giao tiếp</option><option value="Code2">Công nghệ</option><option value="Hotel">Dịch vụ</option>
+                </select>
+              </label>
+              <div className="flex items-end">
+                <button disabled={isSavingTracks} className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-5 py-3 font-bold text-white transition hover:bg-cyan-700 disabled:opacity-50"><Plus className="h-4 w-4" />{isSavingTracks ? 'Đang lưu...' : 'Thêm chủ đề'}</button>
+              </div>
             </form>
           </section>
+
           <section className="rounded-3xl border border-slate-200 bg-white p-5 sm:p-7 dark:border-slate-800 dark:bg-slate-900">
             <h3 className="mb-4 text-lg font-black text-slate-900 dark:text-white">Chủ đề tùy chỉnh ({customCareerTracks.length})</h3>
-            {customCareerTracks.length===0 ? <p className="text-sm text-slate-500">Chưa có chủ đề tùy chỉnh.</p> : <ul className="divide-y">{customCareerTracks.map((track)=><li key={track.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="font-bold">{track.name}</p><p className="text-sm text-slate-500">{track.description} · Mã: {track.id}</p></div><button type="button" disabled={isGeneratingAi} onClick={() => onAiGenerateQuestions(track.id)} className="rounded-xl bg-indigo-600 px-3 py-2 text-sm text-white disabled:opacity-50">Tạo 10 câu AI</button><button type="button" disabled={isSavingTracks} onClick={()=>void handleDeleteCareerTrack(track.id)} className="rounded-lg p-2 text-rose-600 disabled:opacity-50" aria-label={`Xóa ${track.name}`}><Trash2 className="h-4 w-4" /></button></li>)}</ul>}
+            {customCareerTracks.length === 0 ? <p className="text-sm text-slate-500">Chưa có chủ đề tùy chỉnh.</p> : <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+              {customCareerTracks.map((track) => <li key={track.id} className="flex items-center justify-between gap-4 py-3">
+                <div><p className="font-bold text-slate-900 dark:text-white">{track.name}</p><p className="text-sm text-slate-500">{track.description} · Mã: {track.id}</p></div>
+                <button type="button" disabled={isSavingTracks} onClick={() => void handleDeleteCareerTrack(track.id)} className="rounded-lg p-2 text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:hover:bg-rose-950/40" aria-label={`Xóa ${track.name}`}><Trash2 className="h-4 w-4" /></button>
+              </li>)}
+            </ul>}
           </section>
         </div>
       )}
 
+      {/* ============================================================== */}
+      {/* ================= TAB 2: QUẢN LÝ TÀI KHOẢN =================== */}
+      {/* ============================================================== */}
       {activeTab === 'accounts' && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* THẺ THỐNG KÊ TÀI KHOẢN */}
@@ -1915,6 +2091,106 @@ export const AdminView: React.FC<AdminViewProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'kids_ai' && (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          <section className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm dark:border-emerald-900 dark:bg-slate-900 sm:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
+                  <Sparkles className="h-5 w-5" />
+                  <h3 className="text-lg font-bold">AI tạo từ vựng thiếu nhi</h3>
+                </div>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                  Từ AI tạo sẽ nằm ở bản nháp cho đến khi bạn kiểm tra và lưu.
+                </p>
+              </div>
+              <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
+                Đã lưu cho lớp {kidsGrade}: {kidsSavedWords.filter((word) => word.grades.includes(kidsGrade)).length} từ AI
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-4">
+              <label className="space-y-1 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                <span>Lớp</span>
+                <select value={kidsGrade} onChange={(event) => setKidsGrade(Number(event.target.value) as KidsGrade)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950">
+                  {[1, 2, 3, 4, 5, 6].map((grade) => <option key={grade} value={grade}>Lớp {grade}</option>)}
+                </select>
+              </label>
+              <label className="space-y-1 text-xs font-semibold text-slate-700 dark:text-slate-200 sm:col-span-2">
+                <span>Chủ đề</span>
+                <select value={kidsTopic} onChange={(event) => setKidsTopic(event.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950">
+                  <option value="animals">Động vật</option>
+                  <option value="food">Đồ ăn và thức uống</option>
+                  <option value="school">Trường học</option>
+                  <option value="home">Gia đình và nhà cửa</option>
+                  <option value="nature">Thiên nhiên và thời tiết</option>
+                  <option value="transport">Giao thông</option>
+                  <option value="sports">Thể thao và vui chơi</option>
+                  <option value="body">Cơ thể và sức khỏe</option>
+                  <option value="clothes">Quần áo và vật dụng</option>
+                  <option value="colors">Màu sắc và hình dạng</option>
+                  <option value="daily">Hoạt động hằng ngày</option>
+                  <option value="science">Khoa học và vũ trụ</option>
+                </select>
+              </label>
+              <label className="space-y-1 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                <span>Số từ</span>
+                <select value={kidsWordCount} onChange={(event) => setKidsWordCount(Number(event.target.value))} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-950">
+                  {[5, 10, 15, 20].map((count) => <option key={count} value={count}>{count} từ</option>)}
+                </select>
+              </label>
+            </div>
+
+            <button type="button" onClick={handleGenerateKidsWords} disabled={isGeneratingKidsWords} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60">
+              {isGeneratingKidsWords ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              {isGeneratingKidsWords ? 'Đang tạo từ...' : 'Tạo từ bằng AI'}
+            </button>
+          </section>
+
+          {kidsDrafts.length > 0 && (
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="font-bold text-slate-900 dark:text-white">Rà soát bản nháp ({kidsDrafts.length})</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Kiểm tra nghĩa và hình minh họa trước khi đưa vào trò chơi.</p>
+                </div>
+                <button type="button" onClick={handleSaveKidsWords} disabled={isSavingKidsWords} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-indigo-700 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-800 disabled:opacity-60">
+                  {isSavingKidsWords ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {isSavingKidsWords ? 'Đang lưu...' : 'Lưu từ đã chọn'}
+                </button>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                {kidsDrafts.map((draft, index) => (
+                  <article key={draft.draftId} className={`grid grid-cols-[auto_1fr_auto] gap-3 rounded-xl border p-3 ${draft.include ? 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900' : 'border-slate-200 bg-slate-50 opacity-60 dark:border-slate-800 dark:bg-slate-950'}`}>
+                    <input type="checkbox" checked={draft.include} onChange={(event) => setKidsDrafts((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, include: event.target.checked } : item))} aria-label={`Chọn từ ${draft.word}`} className="mt-2 h-4 w-4 accent-emerald-700" />
+                    <div className="grid min-w-0 gap-2 sm:grid-cols-[1fr_1.4fr]">
+                      <label className="space-y-1 text-[11px] font-semibold text-slate-500">
+                        <span>Từ tiếng Anh</span>
+                        <input value={draft.word} onChange={(event) => setKidsDrafts((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, word: event.target.value } : item))} className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-2 text-sm font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      </label>
+                      <label className="space-y-1 text-[11px] font-semibold text-slate-500">
+                        <span>Nghĩa tiếng Việt</span>
+                        <input value={draft.meaning} onChange={(event) => setKidsDrafts((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, meaning: event.target.value } : item))} className="w-full rounded-md border border-slate-300 bg-white px-2.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-white" />
+                      </label>
+                    </div>
+                    <div className="flex flex-col items-center gap-2">
+                      <label className="space-y-1 text-center text-[11px] font-semibold text-slate-500">
+                        <span>Hình</span>
+                        <input value={draft.picture} onChange={(event) => setKidsDrafts((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, picture: event.target.value } : item))} aria-label={`Emoji cho ${draft.word}`} className="w-14 rounded-md border border-slate-300 bg-white px-1 py-1.5 text-center text-xl dark:border-slate-700 dark:bg-slate-950" />
+                      </label>
+                      <button type="button" onClick={() => setKidsDrafts((items) => items.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Bỏ từ ${draft.word}`} title="Bỏ từ này" className="rounded-md p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       )}
 

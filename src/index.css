@@ -91,71 +91,186 @@
   }
 }
 
+/* High-contrast, playful study surface for the children's area. */
+.kids-learning-shell {
+  color: #17324d;
+  border: 2px solid #f4b544;
+  border-radius: 28px;
+  background: linear-gradient(145deg, #fffdf5 0%, #f1f8ff 52%, #fff4d8 100%);
+  box-shadow: 0 10px 0 #d7a53d, 0 22px 42px #061b3b24;
+}
+.kids-learning-header { display: flex; align-items: center; border-bottom: 1px solid #d8e5ee; padding-bottom: 20px; }
+.kids-garden-scene { position: relative; width: min(100%, 380px); height: 190px; flex: 0 1 380px; margin-left: auto; overflow: visible; background: transparent; }
+.kids-garden-scene canvas { display: block; width: 100%; height: 100%; }
+.kids-garden-fallback { position: absolute; inset: 0; display: grid; place-items: center; font-size: 38px; }
+.kids-learning-eyebrow { color: #1068a8; font-size: 13px; font-weight: 900; letter-spacing: 1.2px; }
+.kids-learning-subtitle, .kids-help, .kids-round-note { color: #4a6374; line-height: 1.6; }
+.kids-back-button { color: #164e73; border-color: #8cb8d4; background: #ffffffd9; }
+.kids-grade-picker { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.kids-label { color: #254c66; font-weight: 900; }
+.kids-grade-button { min-width: 68px; color: #28516b; background: #ffffff; border: 2px solid #c9dce8; }
+.kids-grade-button.is-active { color: #fff; background: #147fc1; border-color: #0e6094; box-shadow: 0 4px 0 #0a4b73; }
+.kids-choice-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; }
+.kids-activity-icon { font-size: 42px; line-height: 1; }
+.kids-activity-description { max-width: 270px; color: #4b6475; font-size: 14px; font-weight: 500; line-height: 1.55; }
+.kids-activity-listen { color: #3e2883; border-color: #aaa0e9; background: #f1efff; }
+.kids-activity-picture { color: #7b4b12; border-color: #f3c378; background: #fff5df; }
+.kids-activity-listen:hover, .kids-activity-picture:hover { filter: brightness(.98); transform: translateY(-2px); }
+.kids-progress { accent-color: #147fc1; }
+.kids-progress-row { color: #244d67; }
+.kids-picture { display: inline-block; filter: drop-shadow(0 8px 5px #22425b30); }
+.kids-audio-button, .kids-next-button { background: #147fc1; box-shadow: 0 6px 0 #0b5683, 0 10px 22px #0b568333; }
+.kids-audio-button:hover, .kids-next-button:hover { background: #0e6ca6; }
+.kids-answer { color: #17324d; border-color: #c9dce8; background: #ffffff; box-shadow: 0 4px 0 #d2e0e8; }
+.kids-answer:hover { border-color: #4da1d2; background: #f1faff; }
+.kids-answer-correct { color: #155b3b; border-color: #42b47a; background: #e4faed; }
+.kids-answer-wrong { color: #8b2b3f; border-color: #e68a99; background: #fff0f3; }
+.kids-feedback { color: #204a61; border: 1px solid #9ecde4; background: #eaf7ff; }
+.kids-result-icon { font-size: 72px; }
+.kids-new-round { display: inline-flex; width: auto; }
 
-/* Mobile: identity/account row followed by spacious navigation tiles. */
-.header-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "brand utilities" "navigation navigation";
-  align-items: center;
-  gap: 12px;
-}
-.header-brand { grid-area: brand; }
-.header-navigation {
-  grid-area: navigation;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 3px 0 6px;
-}
-.header-utilities {
-  grid-area: utilities;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.header-navigation > button {
-  flex: 1 1 80px;
-  justify-content: center;
-  min-height: 44px;
-  min-width: 0;
-  border-radius: 14px;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 40%),
-    0 4px 0 rgb(49 46 129 / 30%), 0 7px 12px rgb(49 46 129 / 12%);
-  transition: transform 160ms ease, box-shadow 160ms ease;
-}
-.header-utilities button { min-height: 44px; min-width: 44px; justify-content: center; }
-.header-brand > button {
-  box-shadow: inset 0 2px 0 rgb(255 255 255 / 35%), 0 4px 0 #3730a3, 0 8px 14px rgb(79 70 229 / 20%);
-}
-.header-navigation > button:active {
-  transform: translateY(3px);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 25%), 0 1px 0 rgb(49 46 129 / 30%);
-}
-.header-layout button:focus-visible { outline: 3px solid #818cf8; outline-offset: 3px; }
-@media (hover: hover) and (prefers-reduced-motion: no-preference) {
-  .header-navigation > button:hover { transform: perspective(600px) translateY(-2px) rotateX(5deg); }
-}
-@media (max-width: 479px) {
-  .header-layout { column-gap: 8px; }
-  .header-brand h1 { max-width: 100px; }
-  .header-utilities { gap: 6px; }
-  .header-auth { gap: 6px; }
-  .header-auth button { padding-inline: 8px; }
-  .header-progress { display: none; }
-}
-@media (min-width: 1024px) {
-  .header-layout { grid-template-columns: minmax(0, 1fr) auto; }
-  .header-navigation { justify-content: flex-end; }
-  .header-navigation > button { flex: 0 1 auto; padding-inline: 16px; }
-}
-@media (min-width: 1440px) {
-  .header-layout { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "brand navigation utilities"; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .header-layout *, .header-layout *::before { animation: none !important; transition: none !important; }
-  .header-navigation > button:active { transform: none; }
+.kids-game-hub, .kids-reward-shelf { margin-top: 34px; border-top: 1px solid #d7e4eb; padding-top: 26px; }
+.kids-game-section-heading, .kids-reward-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.kids-game-heading-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.kids-game-section-heading h2, .kids-reward-title { margin: 4px 0 0; color: #17324d; font-size: 22px; font-weight: 900; line-height: 1.2; }
+.kids-game-eyebrow, .kids-reward-eyebrow { margin: 0; color: #347a91; font-size: 11px; font-weight: 900; letter-spacing: 0; }
+.kids-game-review-count { color: #435e70; border: 1px solid #cddde6; border-radius: 999px; background: #fff; padding: 7px 11px; font-size: 12px; font-weight: 800; }
+.kids-game-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.kids-game-card { display: flex; min-width: 0; min-height: 148px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 8px; border: 2px solid; border-radius: 16px; padding: 15px; text-align: left; transition: transform .15s ease, box-shadow .15s ease; }
+.kids-game-card:hover { transform: translateY(-2px); box-shadow: 0 5px 0 #183c5520; }
+.kids-game-card > span { font-size: 29px; line-height: 1; }
+.kids-game-card strong { color: #18364b; font-size: 16px; line-height: 1.25; }
+.kids-game-card small { color: #4b6475; font-size: 12px; line-height: 1.45; }
+.kids-memory-card { border-color: #9bc9e5; background: #eaf6ff; }
+.kids-bingo-card { border-color: #e7b6bd; background: #fff0f0; }
+.kids-adventure-card { border-color: #a4cfae; background: #eff9ed; }
+.kids-review-card { border-color: #e6c77a; background: #fff8df; }
+.kids-game-play { margin-top: 20px; border: 1px solid #cfdee7; border-radius: 18px; background: #ffffffb8; padding: 16px; }
+.kids-game-play-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; color: #607487; font-size: 12px; font-weight: 800; }
+.kids-game-sound-toggle { display: inline-flex; min-height: 40px; align-items: center; justify-content: center; gap: 7px; border: 1px solid #bad0dc; border-radius: 11px; background: #fff; color: #23506b; padding: 7px 10px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.kids-game-sound-toggle:hover { border-color: #65a9c9; background: #eef8fc; }
+.kids-game-sound-toggle:focus-visible { outline: 3px solid #68b5da; outline-offset: 2px; }
+.kids-game-back, .kids-game-secondary, .kids-review-action { min-height: 40px; border: 1px solid #bad0dc; border-radius: 11px; background: #fff; color: #23506b; padding: 8px 12px; font-size: 13px; font-weight: 800; }
+.kids-memory-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 15px; }
+.kids-memory-tile { display: flex; aspect-ratio: 1.18; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 2px solid #8bbbd7; border-radius: 13px; background: #dff1fb; color: #17445f; padding: 5px; font-size: 13px; font-weight: 900; text-align: center; }
+.kids-memory-tile > span { font-size: 30px; }
+.kids-memory-tile small { font-size: 10px; line-height: 1.2; }
+.kids-memory-tile:not(:disabled) { cursor: pointer; }
+.kids-memory-tile:disabled:not(.is-matched) { border-color: #d0a95c; background: #fff4d4; }
+.kids-memory-tile.is-matched { border-color: #63b585; background: #e5f8e9; color: #23583b; }
+.kids-game-success { margin: 15px 0; color: #21653d; font-weight: 900; text-align: center; }
+.kids-game-secondary { display: block; margin: 17px auto 0; background: #eff7fb; }
+.kids-bingo-prompt { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; margin: 18px 0; color: #435e70; text-align: center; font-size: 13px; }
+.kids-audio-button { min-height: 46px; border: 0; border-radius: 999px; padding: 10px 19px; color: #fff; font-weight: 900; }
+.kids-bingo-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.kids-bingo-cell { display: flex; aspect-ratio: 1 / .84; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 2px solid #ddb2b8; border-radius: 12px; background: #fff; color: #553440; padding: 6px 3px; }
+.kids-bingo-cell > span { font-size: 24px; line-height: 1; }
+.kids-bingo-cell strong { overflow-wrap: anywhere; font-size: 12px; }
+.kids-bingo-cell small { color: #286441; font-size: 9px; font-weight: 800; }
+.kids-bingo-cell.is-marked { border-color: #69b77e; background: #e6f8e9; }
+.kids-bingo-cell:disabled:not(.is-marked) { opacity: .42; }
+.kids-adventure-map { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin: 23px 0; padding: 0 4px; }
+.kids-adventure-stop { position: relative; display: grid; width: 48px; aspect-ratio: 1; flex: 0 0 48px; place-items: center; border: 2px solid #cbd8df; border-radius: 50%; background: #f1f5f7; color: #516675; }
+.kids-adventure-stop:not(:last-child)::after { position: absolute; z-index: 0; left: calc(100% + 2px); width: clamp(3px, 5vw, 34px); height: 3px; background: #d4e0e5; content: ''; }
+.kids-adventure-stop > span { z-index: 1; font-size: 20px; }
+.kids-adventure-stop small { position: absolute; top: calc(100% + 4px); color: #607487; font-size: 9px; font-weight: 800; }
+.kids-adventure-stop.is-open { border-color: #78ba86; background: #e7f7e8; }
+.kids-adventure-stop.is-current { outline: 3px solid #f2c361; outline-offset: 2px; }
+.kids-adventure-question, .kids-adventure-result { margin-top: 28px; text-align: center; }
+.kids-adventure-picture, .kids-adventure-result > span { font-size: 52px; }
+.kids-adventure-question h3, .kids-adventure-result h3 { margin: 8px 0; color: #1d3e53; font-size: 17px; font-weight: 900; }
+.kids-adventure-result p { color: #4b6475; font-size: 13px; line-height: 1.5; }
+.kids-game-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 15px; }
+.kids-game-option { min-width: 0; min-height: 45px; overflow-wrap: anywhere; border: 2px solid #cbdce6; border-radius: 11px; background: #fff; color: #17324d; padding: 7px; font-size: 13px; font-weight: 900; }
+.kids-game-option:hover { border-color: #5eabcf; background: #eef9ff; }
+.kids-review-list { display: grid; gap: 9px; margin: 16px 0 0; padding: 0; list-style: none; }
+.kids-review-item { display: flex; min-width: 0; align-items: center; gap: 10px; border: 1px solid #dfd19c; border-radius: 13px; background: #fffbee; padding: 10px; }
+.kids-review-picture { flex: 0 0 38px; font-size: 26px; text-align: center; }
+.kids-review-content { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; color: #213f50; }
+.kids-review-content strong { overflow-wrap: anywhere; font-size: 14px; }
+.kids-review-content span { color: #627889; font-size: 11px; }
+.kids-review-action { flex: 0 0 auto; min-height: 36px; padding: 6px 9px; }
+.kids-reward-header { align-items: flex-start; }
+.kids-reward-heading { min-width: 0; flex: 1 1 210px; }
+.kids-reward-title { font-size: 20px; }
+.kids-reward-subtitle { margin: 6px 0 0; color: #4a6374; font-size: 12px; line-height: 1.5; }
+.kids-reward-garden { display: flex; min-width: 145px; flex: 0 1 175px; flex-direction: column; align-items: center; gap: 3px; border: 1px solid #acd6a7; border-radius: 14px; background: #eff9e9; padding: 10px; text-align: center; }
+.kids-reward-garden-picture { font-size: 34px; line-height: 1; }
+.kids-reward-garden-name { color: #28563b; font-size: 12px; font-weight: 900; }
+.kids-reward-garden-count, .kids-reward-garden-hint { color: #516e59; font-size: 10px; line-height: 1.35; }
+.kids-reward-garden-progress { width: 100%; height: 7px; accent-color: #4a9b63; }
+.kids-reward-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 15px 0 0; padding: 0; list-style: none; }
+.kids-reward-sticker { display: flex; min-width: 0; min-height: 96px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border: 1px solid #d8e1e6; border-radius: 12px; background: #f4f7f8; padding: 7px 4px; text-align: center; }
+.kids-reward-sticker.is-unlocked { border-color: #e2c267; background: #fff8df; }
+.kids-reward-sticker-picture { font-size: 27px; line-height: 1; }
+.kids-reward-sticker-name { color: #294658; font-size: 10px; font-weight: 900; line-height: 1.2; overflow-wrap: anywhere; }
+.kids-reward-sticker-state { color: #687d8a; font-size: 9px; }
+.kids-reward-sticker.is-unlocked .kids-reward-sticker-state { color: #397449; font-weight: 800; }
+.kids-reward-note { margin: 12px 0 0; color: #536d7c; font-size: 11px; line-height: 1.5; text-align: center; }
+
+.dark .kids-learning-shell { color: #f3f8ff; border-color: #d99532; background: linear-gradient(145deg, #172b43, #1c3346 54%, #44361f); box-shadow: 0 10px 0 #9f7021, 0 22px 42px #0008; }
+.dark .kids-learning-header { border-color: #416073; }
+.dark .kids-learning-eyebrow { color: #8dd4ff; }
+.dark .kids-learning-subtitle, .dark .kids-help, .dark .kids-round-note, .dark .kids-activity-description { color: #c1d6e4; }
+.dark .kids-back-button, .dark .kids-grade-button { color: #e0f1fc; border-color: #57788c; background: #1b3449; }
+.dark .kids-grade-button.is-active { color: #fff; border-color: #1288cb; background: #147fc1; }
+.dark .kids-activity-listen { color: #e7e0ff; border-color: #7568bd; background: #302b5c; }
+.dark .kids-activity-picture { color: #ffe5b3; border-color: #bd8138; background: #4a3823; }
+.dark .kids-progress-row, .dark .kids-answer { color: #f3f8ff; }
+.dark .kids-answer { border-color: #557388; background: #1b3449; box-shadow: 0 4px 0 #102331; }
+.dark .kids-answer:hover { border-color: #62b9e8; background: #22455e; }
+.dark .kids-answer-correct { color: #c3f3d4; border-color: #45b879; background: #1b523a; }
+.dark .kids-answer-wrong { color: #ffd1d8; border-color: #d8798a; background: #5b2b38; }
+.dark .kids-feedback { color: #d7efff; border-color: #3b8ab3; background: #163f56; }
+.dark .kids-game-hub, .dark .kids-reward-shelf { border-color: #416073; }
+.dark .kids-game-section-heading h2, .dark .kids-reward-title, .dark .kids-game-card strong, .dark .kids-adventure-question h3, .dark .kids-adventure-result h3, .dark .kids-review-content { color: #eff7fc; }
+.dark .kids-game-eyebrow, .dark .kids-reward-eyebrow { color: #9bdcf5; }
+.dark .kids-game-review-count, .dark .kids-game-play { color: #e1edf4; border-color: #557388; background: #183449; }
+.dark .kids-game-card small, .dark .kids-reward-subtitle, .dark .kids-adventure-result p, .dark .kids-review-content span { color: #c0d2dd; }
+.dark .kids-memory-card { border-color: #4f8eae; background: #153a51; }
+.dark .kids-bingo-card { border-color: #a45f72; background: #4a2936; }
+.dark .kids-adventure-card { border-color: #53885e; background: #203d2c; }
+.dark .kids-review-card { border-color: #9d7e35; background: #44391e; }
+.dark .kids-game-back, .dark .kids-game-secondary, .dark .kids-review-action { color: #e5f3fa; border-color: #5a788b; background: #25465a; }
+.dark .kids-game-sound-toggle { color: #e5f3fa; border-color: #5a788b; background: #25465a; }
+.dark .kids-game-sound-toggle:hover { background: #2c5369; }
+.dark .kids-memory-tile { color: #eff7fc; border-color: #4f8eae; background: #1e465d; }
+.dark .kids-memory-tile:disabled:not(.is-matched) { border-color: #b48d37; background: #514222; }
+.dark .kids-memory-tile.is-matched, .dark .kids-bingo-cell.is-marked { color: #dcf8e5; border-color: #55a975; background: #1e4d34; }
+.dark .kids-bingo-cell, .dark .kids-game-option { color: #eff7fc; border-color: #8d5b68; background: #302633; }
+.dark .kids-bingo-cell small { color: #9fe0b2; }
+.dark .kids-adventure-stop { color: #d9e7ef; border-color: #597183; background: #284052; }
+.dark .kids-adventure-stop.is-open { border-color: #5da46c; background: #234a30; }
+.dark .kids-adventure-stop small { color: #c4d6e1; }
+.dark .kids-review-item { border-color: #8d793f; background: #3b351f; }
+.dark .kids-reward-garden { border-color: #54865c; background: #203b2a; }
+.dark .kids-reward-garden-name, .dark .kids-reward-sticker-name { color: #e3f3e4; }
+.dark .kids-reward-garden-count, .dark .kids-reward-garden-hint, .dark .kids-reward-note { color: #bfd4c4; }
+.dark .kids-reward-sticker { border-color: #587181; background: #233a49; }
+.dark .kids-reward-sticker.is-unlocked { border-color: #a78a3b; background: #453a20; }
+.dark .kids-reward-sticker-state { color: #c1d0da; }
+.dark .kids-reward-sticker.is-unlocked .kids-reward-sticker-state, .dark .kids-game-success { color: #9fe0b2; }
+
+@media (max-width: 639px) {
+  .kids-learning-shell { border-radius: 22px; padding: 20px; }
+  .kids-garden-scene { width: 100%; height: 180px; flex-basis: 100%; margin: 0; }
+  .kids-grade-picker { align-items: flex-start; flex-direction: column; }
+  .kids-grade-button { min-width: 62px; }
+  .kids-game-grid { gap: 8px; }
+  .kids-game-card { min-height: 145px; padding: 11px; }
+  .kids-game-card strong { font-size: 14px; }
+  .kids-game-card small { font-size: 11px; }
+  .kids-game-play { padding: 11px; }
+  .kids-memory-grid { gap: 6px; }
+  .kids-memory-tile { font-size: 11px; }
+  .kids-memory-tile > span { font-size: 25px; }
+  .kids-bingo-grid { gap: 5px; }
+  .kids-bingo-cell strong { font-size: 10px; }
+  .kids-adventure-stop { width: 41px; flex-basis: 41px; }
+  .kids-adventure-stop > span { font-size: 17px; }
+  .kids-review-item { flex-wrap: wrap; }
+  .kids-review-content { flex-basis: calc(100% - 54px); }
+  .kids-review-action { margin-left: 48px; }
+  .kids-reward-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kids-reward-garden { flex-basis: 132px; }
 }

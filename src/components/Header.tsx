@@ -58,9 +58,9 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 py-2.5 sm:py-3 shadow-xs w-full max-w-full transition-colors">
-      <div className="app-container header-layout px-3 sm:px-6">
+      <div className="app-container px-3 sm:px-6 flex items-center justify-between gap-1.5 sm:gap-2 min-w-0">
         {/* Logo & Title */}
-        <div className="header-brand flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 shrink">
           <button
             onClick={() => onViewChange('study')}
             className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-bold shadow-md shadow-indigo-100 dark:shadow-none transition-transform active:scale-95 cursor-pointer overflow-hidden shrink-0"
@@ -88,14 +88,14 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Right Actions */}
-        <nav className="header-navigation" aria-label="Điều hướng chính">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           {/* Nút Chế độ Đấu 1v1 Song Song Trực Tuyến */}
           <button
             onClick={() => onViewChange(currentView === 'duel' ? 'study' : 'duel')}
             className={`inline-flex items-center gap-1 px-2 py-1.5 sm:px-2.5 rounded-xl text-xs font-black transition-all cursor-pointer border shadow-2xs active:scale-95 shrink-0 ${
               currentView === 'duel'
                 ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm'
-                : 'bg-gradient-to-r from-violet-600 via-indigo-600 to-cyan-500 hover:from-violet-700 hover:to-cyan-600 text-white border-indigo-400 shadow-xs'
+                : 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-200 hover:bg-violet-100 border-violet-200 dark:border-violet-800'
             }`}
             title={currentView === 'duel' ? 'Trở về phòng học' : 'Đấu Trường Dịch 1v1 Song Song Trực Tuyến'}
           >
@@ -114,7 +114,7 @@ export const Header: React.FC<HeaderProps> = ({
             className={`inline-flex items-center gap-1 px-2 py-1.5 sm:px-2.5 rounded-xl text-xs font-black transition-all cursor-pointer border shadow-2xs active:scale-95 shrink-0 ${
               currentView === 'battle'
                 ? 'bg-slate-800 dark:bg-slate-800 hover:bg-slate-900 text-white border-slate-700'
-                : 'bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-600 hover:to-rose-700 text-white border-amber-400 shadow-xs shadow-rose-200 dark:shadow-none'
+                : 'bg-amber-50 dark:bg-amber-950 text-amber-800 dark:text-amber-200 hover:bg-amber-100 border-amber-200 dark:border-amber-800'
             }`}
             title={currentView === 'battle' ? 'Trở về phòng học' : 'Thử thách Tháp Ma Vương'}
           >
@@ -158,7 +158,7 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           {/* NÚT DANH SÁCH BẠN BÈ & KẾT BẠN QUA GMAIL */}
-          {onOpenFriends && (
+          {onOpenFriends && profile && (
             <button
               type="button"
               onClick={onOpenFriends}
@@ -166,7 +166,7 @@ export const Header: React.FC<HeaderProps> = ({
               title="Danh sách bạn bè & Thách đấu bằng Gmail"
             >
               <Users className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span>Bạn bè</span>
+              <span className="hidden sm:inline">Bạn bè</span>
               {friendsCount !== undefined && friendsCount > 0 && (
                 <span className="px-1.5 py-0.2 rounded-full bg-indigo-600 text-white font-black text-[10px]">
                   {friendsCount}
@@ -175,8 +175,6 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-        </nav>
-        <div className="header-utilities" aria-label="Tài khoản và giao diện">
           {/* NÚT CHUYỂN ĐỔI GIAO DIỆN SÁNG / TỐI NHANH TRÊN HEADER */}
           {onToggleTheme && (
             <button
@@ -197,7 +195,7 @@ export const Header: React.FC<HeaderProps> = ({
           {profile ? (
             <>
               {/* Huy hiệu VIP hoặc bộ đếm câu hôm nay */}
-              <div className="header-progress flex items-center shrink-0">
+              <div className="flex items-center shrink-0">
                 {isVip ? (
                   <span className="inline-flex items-center gap-0.5 px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-950/50 text-amber-900 dark:text-amber-300 font-bold text-[11px] sm:text-xs border border-amber-300 dark:border-amber-700 shadow-xs">
                     <Crown className="w-3 h-3 text-amber-600 fill-amber-500" />
@@ -247,7 +245,7 @@ export const Header: React.FC<HeaderProps> = ({
             </>
           ) : (
             /* Khi chưa đăng nhập */
-            <div className="header-auth flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2 shrink-0">
               <button
                 onClick={() => onOpenAuth('login')}
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer shadow-2xs"
@@ -271,4 +269,3 @@ export const Header: React.FC<HeaderProps> = ({
     </header>
   );
 };
-

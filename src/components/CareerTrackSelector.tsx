@@ -14,6 +14,7 @@ interface CareerTrackSelectorProps {
   selectedCategory: CareerCategory;
   onSelectCategory: (category: CareerCategory) => void;
   profile: Profile | null;
+  onOpenAuth: () => void;
   onOpenVipPrompt: (track: CareerTrackInfo) => void;
   questionCounts?: Record<CareerCategory, number>;
   tracks?: CareerTrackInfo[];
@@ -30,15 +31,24 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
   selectedCategory,
   onSelectCategory,
   profile,
+  onOpenAuth,
   onOpenVipPrompt,
   questionCounts,
   tracks = CAREER_TRACKS,
 }) => {
   const isVip = profile?.is_vip ?? false;
-  const isAdmin = profile?.email?.toLowerCase().trim() === 'hungpv2172002@gmail.com';
+  const isAdmin = profile?.role === 'admin' || profile?.email?.toLowerCase().trim() === 'hungpv2172002@gmail.com';
   const hasVipAccess = isVip || isAdmin;
 
   const handleTrackClick = (track: CareerTrackInfo) => {
+    if (!profile) {
+      onOpenAuth();
+      return;
+    }
+    if (track.isVipOnly && !hasVipAccess) {
+      onOpenVipPrompt(track);
+      return;
+    }
     onSelectCategory(track.id);
   };
 
@@ -62,7 +72,12 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
           </div>
         </div>
 
-        {hasVipAccess ? (
+        {!profile ? (
+          <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800 shrink-0">
+            <Lock className="w-3 h-3 text-indigo-500" />
+            Đăng nhập để chọn chủ đề
+          </span>
+        ) : hasVipAccess ? (
           <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 shrink-0">
             <Sparkles className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
             Đã mở khóa toàn bộ
@@ -70,7 +85,7 @@ export const CareerTrackSelector: React.FC<CareerTrackSelectorProps> = ({
         ) : (
           <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full shrink-0">
             <Lock className="w-3 h-3 text-amber-500" />
-            {tracks.filter(track => track.isVipOnly).length} ngành VIP
+            3 ngành VIP
           </span>
         )}
       </div>

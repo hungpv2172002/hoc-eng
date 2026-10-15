@@ -8,7 +8,6 @@ interface VipPromptModalProps {
   track: CareerTrackInfo | null;
   profile: Profile | null;
   onOpenAuth: () => void;
-  onTrySample: () => void;
 }
 
 export const VipPromptModal: React.FC<VipPromptModalProps> = ({
@@ -17,7 +16,6 @@ export const VipPromptModal: React.FC<VipPromptModalProps> = ({
   track,
   profile,
   onOpenAuth,
-  onTrySample,
 }) => {
   if (!isOpen || !track) return null;
 
@@ -113,13 +111,10 @@ export const VipPromptModal: React.FC<VipPromptModalProps> = ({
           )}
 
           <button
-            onClick={() => {
-              onClose();
-              onTrySample();
-            }}
+            onClick={onClose}
             className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold rounded-2xl transition-colors text-xs cursor-pointer"
           >
-            Học thử 1 câu mẫu của chuyên ngành này
+            Đóng thông tin VIP
           </button>
         </div>
       </div>
