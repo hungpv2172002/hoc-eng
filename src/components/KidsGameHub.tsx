@@ -3,6 +3,8 @@ import { Volume2, VolumeX } from 'lucide-react';
 import kidsAudio from '../data/kidsAudio.json';
 import { KidsGrade, KidsWord, shuffled } from '../lib/kidsLearning';
 import { playKidsGameSound, stopKidsGameSounds } from '../lib/soundFx';
+import { shouldUseEnhancedSpeechForKids, speakText, stopSpeech } from '../lib/speech';
+import { SpeechVoiceSelector } from './SpeechVoiceSelector';
 
 type Game = 'memory' | 'bingo' | 'adventure' | 'review';
 type Card = { id: number; word: KidsWord; side: 'word' | 'picture' };
@@ -26,16 +28,7 @@ type KidsGameHubProps = {
 };
 
 function fallbackSpeech(word: string): void {
-  if (!('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(word);
-  const voices = window.speechSynthesis.getVoices();
-  utterance.voice = voices.find((voice) => /^en(-US|[-_]US)/i.test(voice.lang))
-    || voices.find((voice) => /^en/i.test(voice.lang)) || null;
-  utterance.lang = 'en-US';
-  utterance.rate = 0.86;
-  utterance.pitch = 1.12;
-  window.speechSynthesis.speak(utterance);
+  speakText(word, { rate: 0.92, pitch: 1 });
 }
 
 export function KidsGameHub({ grade, words, wrongWords, adventureStage, onMistake, onCorrectWord, onClearMistake, onSetAdventureStage, onAward }: KidsGameHubProps) {
@@ -60,7 +53,7 @@ export function KidsGameHub({ grade, words, wrongWords, adventureStage, onMistak
   useEffect(() => () => {
     if (memoryTimer.current !== null) window.clearTimeout(memoryTimer.current);
     activeAudio.current?.pause();
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    stopSpeech();
     stopKidsGameSounds();
   }, []);
 
@@ -81,7 +74,11 @@ export function KidsGameHub({ grade, words, wrongWords, adventureStage, onMistak
 
   const speakWord = (word: string) => {
     activeAudio.current?.pause();
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    stopSpeech();
+    if (shouldUseEnhancedSpeechForKids()) {
+      fallbackSpeech(word);
+      return;
+    }
     const recordingUrl = (kidsAudio as Record<string, string>)[word];
     if (recordingUrl) {
       const recording = new Audio(recordingUrl);
@@ -250,6 +247,7 @@ export function KidsGameHub({ grade, words, wrongWords, adventureStage, onMistak
             <div><p className="kids-game-eyebrow">LỚP {grade}</p><h2 id="kids-game-hub-title">Chọn trò chơi</h2></div>
             <div className="kids-game-heading-tools">
               <span className="kids-game-review-count">📖 {reviewItems.length} từ cần ôn</span>
+              <SpeechVoiceSelector compact />
               {soundToggle}
             </div>
           </div>
@@ -273,6 +271,7 @@ export function KidsGameHub({ grade, words, wrongWords, adventureStage, onMistak
           <div className="kids-game-play-header">
             <button type="button" className="kids-game-back" onClick={backToGames}>← Trò chơi</button>
             <span>Lớp {grade}</span>
+            <SpeechVoiceSelector compact />
             {soundToggle}
           </div>
 

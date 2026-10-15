@@ -1702,7 +1702,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
                 Câu hỏi #{currentQIndex + 1}:
               </span>
               <button
-                onClick={() => playSpeech(currentQ.vi)}
+                onClick={() => playSpeech(currentQ.vi, 0.9, undefined, 'vi-VN')}
                 className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
                 title="Nghe phát âm"
               >

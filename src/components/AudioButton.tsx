@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Volume2, VolumeX, Gauge } from 'lucide-react';
+import { speakText } from '../lib/speech';
+import { SpeechVoiceSelector } from './SpeechVoiceSelector';
 
 interface AudioButtonProps {
   text: string;
@@ -17,26 +19,8 @@ export const SPEED_OPTIONS = [
   { value: 1.25, label: '1.25x', desc: 'Nói nhanh bản xứ' },
 ];
 
-export function playSpeech(text: string, rate: number = 0.9, onEnd?: () => void) {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-
-  try {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-US';
-    utterance.rate = rate;
-    utterance.pitch = 1.0;
-
-    if (onEnd) {
-      utterance.onend = onEnd;
-      utterance.onerror = onEnd;
-    }
-
-    window.speechSynthesis.speak(utterance);
-  } catch (err) {
-    console.warn('SpeechSynthesis error:', err);
-    if (onEnd) onEnd();
-  }
+export function playSpeech(text: string, rate: number = 0.9, onEnd?: () => void, lang: string = 'en-US') {
+  speakText(text, { lang, rate, pitch: 1, onEnd });
 }
 
 export const AudioButton: React.FC<AudioButtonProps> = ({
@@ -106,7 +90,7 @@ export const AudioButton: React.FC<AudioButtonProps> = ({
               />
 
               {/* Popup chỉnh tốc độ */}
-              <div className="absolute right-0 bottom-full mb-2 z-50 w-44 bg-white rounded-2xl shadow-xl border border-slate-200 p-2 space-y-1 animate-in fade-in zoom-in-95">
+              <div className="absolute right-0 bottom-full mb-2 z-50 w-64 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-xl border border-slate-200 p-2 space-y-1 animate-in fade-in zoom-in-95">
                 <div className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 flex items-center justify-between">
                   <span>Tốc độ đọc</span>
                   <span className="text-indigo-600 font-bold">{speed}x</span>
@@ -135,6 +119,9 @@ export const AudioButton: React.FC<AudioButtonProps> = ({
                     </button>
                   );
                 })}
+                <div className="border-t border-slate-100 pt-2">
+                  <SpeechVoiceSelector />
+                </div>
               </div>
             </>
           )}

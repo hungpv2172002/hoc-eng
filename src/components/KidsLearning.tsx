@@ -5,6 +5,8 @@ import { KidsProgress, readKidsProgress, writeKidsProgress } from '../lib/kidsPr
 import { KidsRewardShelf } from './KidsRewardShelf';
 import { KidsGameHub } from './KidsGameHub';
 import { KidsGardenScene } from './KidsGardenScene';
+import { SpeechVoiceSelector } from './SpeechVoiceSelector';
+import { shouldUseEnhancedSpeechForKids, speakText, stopSpeech } from '../lib/speech';
 
 export function KidsLearning({ onBack }: { onBack?: () => void } = {}) {
   const [grade, setGrade] = useState<KidsGrade>(1);
@@ -46,7 +48,7 @@ export function KidsLearning({ onBack }: { onBack?: () => void } = {}) {
 
   useEffect(() => () => {
     audioRef.current?.pause();
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+    stopSpeech();
   }, [canSpeak]);
 
   useEffect(() => {
@@ -88,7 +90,11 @@ export function KidsLearning({ onBack }: { onBack?: () => void } = {}) {
 
   function speak(word: string) {
     audioRef.current?.pause();
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+    stopSpeech();
+    if (shouldUseEnhancedSpeechForKids()) {
+      speakText(word, { rate: 0.92, pitch: 1, onStart: () => setIsSpeaking(true), onEnd: () => setIsSpeaking(false) });
+      return;
+    }
     const recordingUrl = (kidsAudio as Record<string, string>)[word];
     if (recordingUrl && typeof Audio !== 'undefined') {
       const recording = new Audio(recordingUrl);
@@ -103,30 +109,17 @@ export function KidsLearning({ onBack }: { onBack?: () => void } = {}) {
   }
 
   function fallbackSpeech(word: string) {
-    if (!canSpeak || !('speechSynthesis' in window)) {
+    if (!canSpeak) {
       setIsSpeaking(false);
       return;
     }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(word);
-    const voices = window.speechSynthesis.getVoices();
-    utterance.voice = voices.find((voice) => /^en(-US|[-_]US)/i.test(voice.lang))
-      || voices.find((voice) => /^en/i.test(voice.lang))
-      || null;
-    utterance.lang = 'en-US';
-    utterance.rate = 0.9;
-    utterance.pitch = 1.08;
-    utterance.volume = 1;
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-    window.speechSynthesis.speak(utterance);
+    speakText(word, { rate: 0.92, pitch: 1, onStart: () => setIsSpeaking(true), onEnd: () => setIsSpeaking(false) });
   }
 
   function start(mode: KidsActivity) {
     audioRef.current?.pause();
     audioRef.current = null;
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+    stopSpeech();
     setIsSpeaking(false);
     setActivity(mode);
     setRound(createKidsRound(grade, gradeWords));
@@ -162,7 +155,7 @@ export function KidsLearning({ onBack }: { onBack?: () => void } = {}) {
     if (!selected) return;
     audioRef.current?.pause();
     audioRef.current = null;
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+    stopSpeech();
     setIsSpeaking(false);
     if (index === round.length - 1) {
       setFinished(true);
@@ -283,9 +276,12 @@ export function KidsLearning({ onBack }: { onBack?: () => void } = {}) {
             </div>
           ) : (
             <div className="kids-prompt my-8 text-center">
-              <button type="button" onClick={() => speak(question.target.word)} disabled={!canSpeak} className="kids-audio-button rounded-full px-8 py-5 text-xl font-black text-white">
-                {isSpeaking ? '🔊 Đang đọc...' : '🔊 Bấm để nghe'}
-              </button>
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <button type="button" onClick={() => speak(question.target.word)} disabled={!canSpeak} className="kids-audio-button rounded-full px-8 py-5 text-xl font-black text-white">
+                  {isSpeaking ? '🔊 Đang đọc...' : '🔊 Bấm để nghe'}
+                </button>
+                <SpeechVoiceSelector compact />
+              </div>
               <p className="kids-help mt-3">Bé có thể nghe lại nhiều lần.</p>
             </div>
           )}
