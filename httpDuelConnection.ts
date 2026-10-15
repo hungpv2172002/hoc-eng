@@ -1,0 +1,153 @@
+import { supabase, isSupabaseConfigured } from './supabaseClient.ts';
+
+// Polling transport for the durable duel API. It keeps the same small event protocol as the duel UI.
+export class HttpDuelConnection {
+  readyState = 0;
+  onopen: (() => void) | null = null;
+  onrecovered: (() => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  private cursor = 0;
+  private token: string;
+  private chain = Promise.resolve();
+  private registered = false;
+  private registrationCommand: any = null;
+  private failures = 0;
+  private lastState = '';
+  private lastCountdown: number | null = null;
+  private controller: AbortController | null = null;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private hasConnectionError = false;
+  private readonly fetcher: typeof fetch;
+  private readonly retryBaseMs: number;
+
+  constructor(identity: string, fetcher: typeof fetch = fetch, retryBaseMs = 1000) {
+    this.fetcher = fetcher;
+    this.retryBaseMs = retryBaseMs;
+    const storageKey = `duel_session_v2_${identity}`;
+    const saved = sessionStorage.getItem(storageKey);
+    this.token = saved || Array.from(crypto.getRandomValues(new Uint8Array(32)), (n) => n.toString(16).padStart(2, '0')).join('');
+    sessionStorage.setItem(storageKey, this.token);
+    queueMicrotask(() => { if (this.readyState === 0) { this.readyState = 1; this.onopen?.(); } });
+  }
+
+  private emit(data: any) { if (this.readyState === 1) this.onmessage?.({ data: JSON.stringify(data) }); }
+
+  send(raw: string) {
+    if (this.readyState !== 1) return;
+    const command = JSON.parse(raw);
+    if (command.type === 'typing') return;
+    command.requestId = crypto.randomUUID();
+    if (command.type === 'register_lobby') this.registrationCommand = command;
+    this.chain = this.chain.then(() => this.sync(command)).catch(() => undefined);
+  }
+
+  private async sync(command: any) {
+    if (this.readyState !== 1) return;
+    if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; }
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (command.type === 'register_lobby' && isSupabaseConfigured) {
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.access_token) headers.Authorization = `Bearer ${data.session.access_token}`;
+      }
+      this.controller = new AbortController();
+      const timeout = setTimeout(() => this.controller?.abort(), 12000);
+      let response: Response;
+      try {
+        response = await this.fetcher('/api/duel/sync', {
+          method: 'POST', headers,
+          body: JSON.stringify({ sessionToken: this.token, command, cursor: this.cursor }),
+          signal: this.controller.signal,
+        });
+      } finally {
+        clearTimeout(timeout);
+        this.controller = null;
+      }
+      const responseText = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        const message = `API đấu trả HTTP ${response.status} nhưng không có phản hồi JSON. Hãy kiểm tra route /api/duel/sync trên Vercel.`;
+        this.hasConnectionError = true;
+        this.emit({ type: 'error', message, connectionFailure: true });
+        this.failures++;
+        this.onerror?.();
+        return;
+      }
+      if (!response.ok) {
+        if (response.status === 400 && data.error?.includes('Phiên đấu đã hết hạn')) {
+          this.registered = false;
+          return;
+        }
+        const message = data.error || `Máy chủ đấu trả về lỗi HTTP ${response.status}.`;
+        const terminal = response.status === 401 || response.status === 403 ||
+          (response.status === 400 && command.type === 'register_lobby');
+        const connectionFailure = terminal || response.status === 404 || response.status >= 500;
+        this.emit({ type: 'error', message, connectionFailure });
+        if (terminal) {
+          this.hasConnectionError = true;
+          this.onerror?.();
+          this.close();
+          return;
+        }
+        if (connectionFailure) {
+          this.hasConnectionError = true;
+          this.failures++;
+          this.onerror?.();
+        }
+        if (response.status >= 500) {
+          return;
+        }
+        return;
+      }
+      const recovered = this.failures > 0;
+      this.registered = true; this.failures = 0;
+      if (recovered || this.hasConnectionError) {
+        this.hasConnectionError = false;
+        this.emit({ type: 'connection_restored' });
+        this.onrecovered?.();
+      }
+      this.emit({ type: 'lobby_state', players: data.players || [], invitations: [] });
+      for (const event of data.events || []) this.emit(event);
+      this.cursor = data.cursor;
+      const stateText = JSON.stringify(data.state);
+      if (data.state && stateText !== this.lastState) { this.emit({ type: 'room_state', state: data.state, serverNow: data.serverNow }); this.lastState = stateText; }
+      if (!data.state) {
+        if (this.lastState) this.emit({ type: 'room_cleared' });
+        this.lastState = '';
+        this.lastCountdown = null;
+      }
+      const count = data.state?.status === 'countdown' ? Math.max(1, Math.ceil((data.state.roundStartedAt - data.serverNow) / 1000)) : null;
+      if (count !== this.lastCountdown) { this.lastCountdown = count; if (count !== null) this.emit({ type: 'countdown_tick', count }); else if (data.state?.status === 'in_progress') this.emit({ type: 'game_started' }); }
+    } catch (error: any) {
+      const message = error?.name === 'AbortError'
+        ? 'Máy chủ đấu không phản hồi sau 12 giây.'
+        : error?.name === 'TypeError'
+          ? 'Không thể gọi API đấu /api/duel/sync. Hãy kiểm tra kết nối mạng và deployment trên Vercel.'
+          : `Lỗi đồng bộ đấu trường: ${error?.message || 'không rõ nguyên nhân'}`;
+      this.hasConnectionError = true;
+      this.emit({ type: 'error', message, connectionFailure: true });
+      this.failures++;
+      this.onerror?.();
+    } finally {
+      if (this.readyState === 1) {
+        const delay = this.failures ? Math.min(this.retryBaseMs * 2 ** Math.min(this.failures, 4), 15000) : 1200;
+        this.retryTimer = setTimeout(() => {
+          const nextCommand = this.registered ? { type: 'poll' } : this.registrationCommand || command;
+          this.chain = this.chain.then(() => this.sync(nextCommand)).catch(() => undefined);
+        }, delay);
+      }
+    }
+  }
+
+  close() {
+    if (this.readyState === 3) return;
+    this.readyState = 3;
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.controller?.abort();
+    this.onclose?.();
+  }
+}
