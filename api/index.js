@@ -4,11 +4,286 @@ import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import path from "path";
 import fs from "fs";
-import crypto from "crypto";
+import crypto2 from "crypto";
 import nodemailer from "nodemailer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
+
+// src/data/adultQuestionBank.ts
+var today = () => (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+function buildLevel(level, startId, frames) {
+  return frames.flatMap(
+    (frame, frameIndex) => frame.items.map((item, itemIndex) => ({
+      id: startId + frameIndex * 10 + itemIndex,
+      vi: frame.vi.replace("{item}", item.vi),
+      hints: `${frame.hint}; ${item.en} = ${item.vi}`,
+      answers: [frame.en.replace("{item}", item.en)],
+      created_date: today(),
+      category: "general",
+      level
+    }))
+  );
+}
+var A1_ITEMS = [
+  ["t\xE1o", "apples"],
+  ["chu\u1ED1i", "bananas"],
+  ["b\xE1nh m\xEC", "bread"],
+  ["c\u01A1m", "rice"],
+  ["tr\u1EE9ng", "eggs"],
+  ["th\u1ECBt g\xE0", "chicken"],
+  ["cam", "oranges"],
+  ["m\xEC", "noodles"],
+  ["s\u1EEFa chua", "yogurt"],
+  ["b\xE1nh quy", "cookies"]
+].map(([vi, en]) => ({ vi, en }));
+var A1_OBJECTS = [
+  ["m\u1ED9t chi\u1EBFc b\xFAt", "a pen"],
+  ["m\u1ED9t quy\u1EC3n v\u1EDF", "a notebook"],
+  ["m\u1ED9t chi\u1EBFc \xF4", "an umbrella"],
+  ["m\u1ED9t chi\u1EBFc \u0111\u1ED3ng h\u1ED3", "a watch"],
+  ["m\u1ED9t c\xE1i t\xFAi", "a bag"],
+  ["m\u1ED9t chi\u1EBFc xe \u0111\u1EA1p", "a bicycle"],
+  ["m\u1ED9t chi\u1EBFc \xE1o kho\xE1c", "a jacket"],
+  ["m\u1ED9t chi\u1EBFc \u0111i\u1EC7n tho\u1EA1i", "a phone"],
+  ["m\u1ED9t chi\u1EBFc ch\xECa kh\xF3a", "a key"],
+  ["m\u1ED9t chi\u1EBFc m\u0169", "a hat"]
+].map(([vi, en]) => ({ vi, en }));
+var A1_PLACES = [
+  ["tr\u01B0\u1EDDng h\u1ECDc", "school"],
+  ["si\xEAu th\u1ECB", "the supermarket"],
+  ["c\xF4ng vi\xEAn", "the park"],
+  ["th\u01B0 vi\u1EC7n", "the library"],
+  ["b\u01B0u \u0111i\u1EC7n", "the post office"],
+  ["nh\xE0 ga", "the station"],
+  ["b\u1EC7nh vi\u1EC7n", "the hospital"],
+  ["b\u1EA3o t\xE0ng", "the museum"],
+  ["b\xE3i bi\u1EC3n", "the beach"],
+  ["nh\xE0 h\xE0ng", "the restaurant"]
+].map(([vi, en]) => ({ vi, en }));
+var A1_DRINKS = [
+  ["n\u01B0\u1EDBc l\u1ECDc", "water"],
+  ["tr\xE0", "tea"],
+  ["c\xE0 ph\xEA", "coffee"],
+  ["n\u01B0\u1EDBc cam", "orange juice"],
+  ["s\u1EEFa", "milk"],
+  ["n\u01B0\u1EDBc chanh", "lemonade"],
+  ["n\u01B0\u1EDBc d\u1EEBa", "coconut water"],
+  ["s\xF4 c\xF4 la n\xF3ng", "hot chocolate"],
+  ["sinh t\u1ED1", "a smoothie"],
+  ["n\u01B0\u1EDBc t\xE1o", "apple juice"]
+].map(([vi, en]) => ({ vi, en }));
+var A1_CLOTHES = [
+  ["\xE1o len", "a sweater"],
+  ["qu\u1EA7n d\xE0i", "trousers"],
+  ["\u0111\xF4i gi\xE0y", "shoes"],
+  ["\xE1o m\u01B0a", "a raincoat"],
+  ["kh\u0103n qu\xE0ng", "a scarf"],
+  ["g\u0103ng tay", "gloves"],
+  ["v\xE1y", "a dress"],
+  ["\xE1o s\u01A1 mi", "a shirt"],
+  ["qu\u1EA7n \u0111\xF9i", "shorts"],
+  ["\u0111\xF4i t\u1EA5t", "socks"]
+].map(([vi, en]) => ({ vi, en }));
+var A1_ANIMALS = [
+  ["m\u1ED9t con m\xE8o", "a cat"],
+  ["m\u1ED9t con ch\xF3", "a dog"],
+  ["m\u1ED9t con chim", "a bird"],
+  ["m\u1ED9t con c\xE1", "a fish"],
+  ["m\u1ED9t con ng\u1EF1a", "a horse"],
+  ["m\u1ED9t con th\u1ECF", "a rabbit"],
+  ["m\u1ED9t con kh\u1EC9", "a monkey"],
+  ["m\u1ED9t con b\xF2", "a cow"],
+  ["m\u1ED9t con g\xE0", "a chicken"],
+  ["m\u1ED9t con b\u01B0\u1EDBm", "a butterfly"]
+].map(([vi, en]) => ({ vi, en }));
+var A1_BOOKS = [
+  ["m\u1ED9t cu\u1ED1n truy\u1EC7n", "a storybook"],
+  ["m\u1ED9t cu\u1ED1n ti\u1EC3u thuy\u1EBFt", "a novel"],
+  ["m\u1ED9t t\u1EDD b\xE1o", "a newspaper"],
+  ["m\u1ED9t t\u1EA1p ch\xED", "a magazine"],
+  ["m\u1ED9t cu\u1ED1n t\u1EEB \u0111i\u1EC3n", "a dictionary"],
+  ["m\u1ED9t cu\u1ED1n truy\u1EC7n tranh", "a comic book"],
+  ["m\u1ED9t cu\u1ED1n s\xE1ch n\u1EA5u \u0103n", "a cookbook"],
+  ["m\u1ED9t quy\u1EC3n s\xE1ch gi\xE1o khoa", "a textbook"],
+  ["m\u1ED9t l\xE1 th\u01B0", "a letter"],
+  ["m\u1ED9t t\u1EA5m b\u1EA3n \u0111\u1ED3", "a map"]
+].map(([vi, en]) => ({ vi, en }));
+var A1_FRAMES = [
+  { vi: "T\xF4i th\xEDch \u0103n {item}.", en: "I like eating {item}.", hint: "like eating = th\xEDch \u0103n", items: A1_ITEMS },
+  { vi: "T\xF4i c\xF3 {item}.", en: "I have {item}.", hint: "have = c\xF3", items: A1_OBJECTS },
+  { vi: "T\xF4i nh\xECn th\u1EA5y {item} trong c\xF4ng vi\xEAn.", en: "I see {item} in the park.", hint: "see = nh\xECn th\u1EA5y; in the park = trong c\xF4ng vi\xEAn", items: A1_ANIMALS },
+  { vi: "T\xF4i mu\u1ED1n mua {item}.", en: "I want to buy {item}.", hint: "want to buy = mu\u1ED1n mua", items: A1_OBJECTS },
+  { vi: "T\xF4i \u0111i \u0111\u1EBFn {item} v\xE0o cu\u1ED1i tu\u1EA7n.", en: "I go to {item} at the weekend.", hint: "go to = \u0111i \u0111\u1EBFn; at the weekend = v\xE0o cu\u1ED1i tu\u1EA7n", items: A1_PLACES },
+  { vi: "T\xF4i u\u1ED1ng {item} v\xE0o bu\u1ED5i s\xE1ng.", en: "I drink {item} in the morning.", hint: "drink = u\u1ED1ng; in the morning = v\xE0o bu\u1ED5i s\xE1ng", items: A1_DRINKS },
+  { vi: "T\xF4i m\u1EB7c {item} khi tr\u1EDDi l\u1EA1nh.", en: "I wear {item} when it is cold.", hint: "wear = m\u1EB7c; when it is cold = khi tr\u1EDDi l\u1EA1nh", items: A1_CLOTHES },
+  { vi: "T\xF4i th\u01B0\u1EDDng \u0111\u1ECDc {item} tr\u01B0\u1EDBc khi ng\u1EE7.", en: "I often read {item} before bed.", hint: "often = th\u01B0\u1EDDng; before bed = tr\u01B0\u1EDBc khi ng\u1EE7", items: A1_BOOKS },
+  { vi: "T\xF4i mu\u1ED1n \u0111\u1EBFn {item} h\xF4m nay.", en: "I want to go to {item} today.", hint: "want to go = mu\u1ED1n \u0111i; today = h\xF4m nay", items: A1_PLACES },
+  { vi: "T\xF4i nh\xECn th\u1EA5y {item} g\u1EA7n nh\xE0.", en: "I see {item} near my house.", hint: "near my house = g\u1EA7n nh\xE0", items: A1_ANIMALS }
+];
+var A2_ITEMS = [
+  ["m\u1ED9t l\u1EDBp n\u1EA5u \u0103n", "a cooking class"],
+  ["m\u1ED9t chuy\u1EBFn \u0111i ng\u1EAFn", "a short trip"],
+  ["m\u1ED9t b\u1ED9 phim m\u1EDBi", "a new film"],
+  ["m\u1ED9t chi\u1EBFc xe bu\xFDt", "a bus"],
+  ["m\u1ED9t c\u0103n ph\xF2ng y\xEAn t\u0129nh", "a quiet room"],
+  ["m\u1ED9t chi\u1EBFc m\xE1y \u1EA3nh t\u1ED1t", "a good camera"],
+  ["m\u1ED9t c\xF4ng vi\u1EC7c b\xE1n th\u1EDDi gian", "a part-time job"],
+  ["m\u1ED9t nh\xE0 h\xE0ng \u0111\u1ECBa ph\u01B0\u01A1ng", "a local restaurant"],
+  ["m\u1ED9t kh\xF3a h\u1ECDc tr\u1EF1c tuy\u1EBFn", "an online course"],
+  ["m\u1ED9t \u0111\xF4i gi\xE0y tho\u1EA3i m\xE1i", "comfortable shoes"]
+].map(([vi, en]) => ({ vi, en }));
+var A2_PLACES = [
+  ["\u0110\xE0 N\u1EB5ng", "Da Nang"],
+  ["H\xE0 N\u1ED9i", "Hanoi"],
+  ["H\u1ED9i An", "Hoi An"],
+  ["m\u1ED9t th\u1ECB tr\u1EA5n nh\u1ECF", "a small town"],
+  ["m\u1ED9t h\xF2n \u0111\u1EA3o y\xEAn b\xECnh", "a peaceful island"],
+  ["v\xF9ng n\xFAi ph\xEDa b\u1EAFc", "the northern mountains"],
+  ["m\u1ED9t khu ch\u1EE3 \u0111\xEAm", "a night market"],
+  ["m\u1ED9t b\u1EA3o t\xE0ng m\u1EDBi", "a new museum"],
+  ["m\u1ED9t khu ngh\u1EC9 d\u01B0\u1EE1ng", "a resort"],
+  ["m\u1ED9t ng\xF4i l\xE0ng ven bi\u1EC3n", "a coastal village"]
+].map(([vi, en]) => ({ vi, en }));
+var A2_SERVICES = [
+  ["\u0111\u1ED5i l\u1ECBch h\u1EB9n", "reschedule the appointment"],
+  ["gi\u1EA3i th\xEDch h\xF3a \u0111\u01A1n", "explain the bill"],
+  ["g\u1ECDi taxi", "call a taxi"],
+  ["\u0111\u1EB7t b\xE0n", "book a table"],
+  ["s\u1EEDa chi\u1EBFc xe \u0111\u1EA1p", "repair the bicycle"],
+  ["g\u1EEDi email", "send an email"],
+  ["m\u01B0\u1EE3n m\u1ED9t cu\u1ED1n s\xE1ch", "borrow a book"],
+  ["in t\xE0i li\u1EC7u", "print the document"],
+  ["\u0111\u1ED5i ph\xF2ng", "change the room"],
+  ["h\u1EE7y v\xE9", "cancel the ticket"]
+].map(([vi, en]) => ({ vi, en }));
+var A2_FRAMES = [
+  { vi: "T\xF4i \u0111\xE3 l\xEAn k\u1EBF ho\u1EA1ch cho {item}.", en: "I have made plans for {item}.", hint: "make plans for = l\xEAn k\u1EBF ho\u1EA1ch cho", items: A2_ITEMS },
+  { vi: "T\xF4i d\u1EF1 \u0111\u1ECBnh s\u1EBD \u0111\u1EBFn {item} v\xE0o m\xF9a h\xE8 n\xE0y.", en: "I plan to visit {item} this summer.", hint: "plan to visit = d\u1EF1 \u0111\u1ECBnh \u0111\u1EBFn th\u0103m; this summer = m\xF9a h\xE8 n\xE0y", items: A2_PLACES },
+  { vi: "B\u1EA1n c\xF3 th\u1EC3 gi\xFAp t\xF4i {item} kh\xF4ng?", en: "Could you help me {item}?", hint: "could you help me = b\u1EA1n c\xF3 th\u1EC3 gi\xFAp t\xF4i", items: A2_SERVICES },
+  { vi: "T\xF4i \u0111\xE3 t\u1EEBng th\u1EED {item}.", en: "I have tried {item} before.", hint: "have tried = \u0111\xE3 t\u1EEBng th\u1EED; before = tr\u01B0\u1EDBc \u0111\xE2y", items: A2_SERVICES },
+  { vi: "Ch\xFAng ta n\xEAn \u0111\u1EB7t {item} tr\u01B0\u1EDBc.", en: "We should book {item} in advance.", hint: "should = n\xEAn; in advance = tr\u01B0\u1EDBc", items: A2_ITEMS },
+  { vi: "T\xF4i th\u1EA5y {item} kh\xE1 h\u1EEFu \xEDch.", en: "I find {item} quite useful.", hint: "find ... useful = th\u1EA5y ... h\u1EEFu \xEDch; quite = kh\xE1", items: A2_ITEMS },
+  { vi: "T\xF4i th\u01B0\u1EDDng gh\xE9 qua {item} sau gi\u1EDD l\xE0m.", en: "I often stop by {item} after work.", hint: "stop by = gh\xE9 qua; after work = sau gi\u1EDD l\xE0m", items: A2_PLACES },
+  { vi: "T\xF4i c\u1EA7n th\xEAm th\u1EDDi gian \u0111\u1EC3 {item}.", en: "I need more time to {item}.", hint: "need more time to = c\u1EA7n th\xEAm th\u1EDDi gian \u0111\u1EC3", items: A2_SERVICES },
+  { vi: "Th\u1EDDi ti\u1EBFt \u1EDF {item} th\u01B0\u1EDDng d\u1EC5 ch\u1ECBu.", en: "The weather in {item} is usually pleasant.", hint: "usually pleasant = th\u01B0\u1EDDng d\u1EC5 ch\u1ECBu", items: A2_PLACES },
+  { vi: "T\xF4i vui v\xEC \u0111\xE3 ch\u1ECDn {item}.", en: "I am glad that I chose {item}.", hint: "be glad = vui; choose = ch\u1ECDn", items: A2_ITEMS }
+];
+var B1_ITEMS = [
+  ["c\u1EA3i thi\u1EC7n k\u1EF9 n\u0103ng giao ti\u1EBFp", "improve communication skills"],
+  ["l\xE0m vi\u1EC7c v\u1EDBi m\u1ED9t nh\xF3m \u0111a qu\u1ED1c gia", "work with a multicultural team"],
+  ["h\u1ECDc m\u1ED9t ng\xF4n ng\u1EEF m\u1EDBi", "learn a new language"],
+  ["tham gia ho\u1EA1t \u0111\u1ED9ng t\xECnh nguy\u1EC7n", "join a volunteer activity"],
+  ["duy tr\xEC th\xF3i quen l\xE0nh m\u1EA1nh", "maintain a healthy habit"],
+  ["\u0111\u1ECDc tin t\u1EE9c m\u1ED7i ng\xE0y", "read the news every day"],
+  ["l\u1EADp k\u1EBF ho\u1EA1ch cho t\u01B0\u01A1ng lai", "plan for the future"],
+  ["gi\u1EA3m th\u1EDDi gian d\xF9ng \u0111i\u1EC7n tho\u1EA1i", "reduce phone time"],
+  ["b\u1EA3o v\u1EC7 m\xF4i tr\u01B0\u1EDDng", "protect the environment"],
+  ["c\xE2n b\u1EB1ng c\xF4ng vi\u1EC7c v\xE0 cu\u1ED9c s\u1ED1ng", "balance work and life"]
+].map(([vi, en]) => ({ vi, en }));
+var B1_TOPICS = [
+  ["gi\xE1o d\u1EE5c tr\u1EF1c tuy\u1EBFn", "online education"],
+  ["giao th\xF4ng c\xF4ng c\u1ED9ng", "public transport"],
+  ["l\xE0m vi\u1EC7c t\u1EEB xa", "remote work"],
+  ["du l\u1ECBch b\u1EC1n v\u1EEFng", "sustainable tourism"],
+  ["th\u1EC3 thao h\u1ECDc \u0111\u01B0\u1EDDng", "school sports"],
+  ["th\xF3i quen \u0111\u1ECDc s\xE1ch", "reading habits"],
+  ["s\u1EE9c kh\u1ECFe tinh th\u1EA7n", "mental health"],
+  ["n\u0103ng l\u01B0\u1EE3ng t\xE1i t\u1EA1o", "renewable energy"],
+  ["v\u0103n h\xF3a \u0111\u1ECBa ph\u01B0\u01A1ng", "local culture"],
+  ["c\xF4ng ngh\u1EC7 trong l\u1EDBp h\u1ECDc", "technology in the classroom"]
+].map(([vi, en]) => ({ vi, en }));
+var B1_FRAMES = [
+  { vi: "T\xF4i tin r\u1EB1ng {item} r\u1EA5t quan tr\u1ECDng trong cu\u1ED9c s\u1ED1ng hi\u1EC7n \u0111\u1EA1i.", en: "I believe that {item} is important in modern life.", hint: "believe that = tin r\u1EB1ng; important = quan tr\u1ECDng", items: B1_TOPICS },
+  { vi: "T\xF4i \u0111ang c\u1ED1 g\u1EAFng {item}.", en: "I am trying to {item}.", hint: "be trying to = \u0111ang c\u1ED1 g\u1EAFng", items: B1_ITEMS },
+  { vi: "Theo t\xF4i, {item} mang l\u1EA1i nhi\u1EC1u l\u1EE3i \xEDch.", en: "In my opinion, {item} brings many benefits.", hint: "in my opinion = theo t\xF4i; benefits = l\u1EE3i \xEDch", items: B1_TOPICS },
+  { vi: "T\xF4i \u0111\xE3 h\u1ECDc \u0111\u01B0\u1EE3c nhi\u1EC1u \u0111i\u1EC1u khi {item}.", en: "I have learned a lot by {item}.", hint: "learn a lot by = h\u1ECDc \u0111\u01B0\u1EE3c nhi\u1EC1u \u0111i\u1EC1u khi", items: B1_ITEMS },
+  { vi: "M\u1ED9t gi\u1EA3i ph\xE1p cho v\u1EA5n \u0111\u1EC1 n\xE0y l\xE0 {item}.", en: "One solution to this problem is to {item}.", hint: "one solution = m\u1ED9t gi\u1EA3i ph\xE1p; problem = v\u1EA5n \u0111\u1EC1", items: B1_ITEMS },
+  { vi: "T\xF4i mu\u1ED1n th\u1EA3o lu\u1EADn th\xEAm v\u1EC1 {item}.", en: "I would like to discuss {item} further.", hint: "would like to discuss = mu\u1ED1n th\u1EA3o lu\u1EADn; further = th\xEAm", items: B1_TOPICS },
+  { vi: "T\xF4i nh\u1EADn th\u1EA5y {item} \u0111ang thay \u0111\u1ED5i nhanh ch\xF3ng.", en: "I have noticed that {item} is changing quickly.", hint: "have noticed = nh\u1EADn th\u1EA5y; quickly = nhanh ch\xF3ng", items: B1_TOPICS },
+  { vi: "Ch\xFAng ta c\xF3 th\u1EC3 b\u1EAFt \u0111\u1EA7u b\u1EB1ng c\xE1ch {item}.", en: "We can start by {item}.", hint: "start by = b\u1EAFt \u0111\u1EA7u b\u1EB1ng c\xE1ch", items: B1_ITEMS },
+  { vi: "T\xF4i \u0111\u1ED3ng \xFD r\u1EB1ng {item} c\u1EA7n \u0111\u01B0\u1EE3c quan t\xE2m h\u01A1n.", en: "I agree that {item} deserves more attention.", hint: "agree that = \u0111\u1ED3ng \xFD r\u1EB1ng; deserve attention = c\u1EA7n \u0111\u01B0\u1EE3c quan t\xE2m", items: B1_TOPICS },
+  { vi: "T\xF4i hy v\u1ECDng s\u1EBD ti\u1EBFp t\u1EE5c {item} trong n\u0103m t\u1EDBi.", en: "I hope to continue to {item} next year.", hint: "hope to continue = hy v\u1ECDng ti\u1EBFp t\u1EE5c; next year = n\u0103m t\u1EDBi", items: B1_ITEMS }
+];
+var B2_ITEMS = [
+  ["ph\xE2n t\xEDch d\u1EEF li\u1EC7u kh\xE1ch h\xE0ng", "analyze customer data"],
+  ["\u0111\xE1nh gi\xE1 hi\u1EC7u qu\u1EA3 c\u1EE7a chi\u1EBFn d\u1ECBch", "evaluate the campaign performance"],
+  ["t\u1ED1i \u01B0u h\xF3a quy tr\xECnh l\xE0m vi\u1EC7c", "optimize the workflow"],
+  ["x\xE2y d\u1EF1ng k\u1EBF ho\u1EA1ch d\u1EF1 ph\xF2ng", "develop a contingency plan"],
+  ["\u0111\xE0o t\u1EA1o nh\xE2n vi\xEAn m\u1EDBi", "train new employees"],
+  ["tri\u1EC3n khai h\u1EC7 th\u1ED1ng an to\xE0n h\u01A1n", "deploy a safer system"],
+  ["thuy\u1EBFt ph\u1EE5c c\xE1c b\xEAn li\xEAn quan", "persuade the stakeholders"],
+  ["gi\u1EA3m chi ph\xED v\u1EADn h\xE0nh", "reduce operating costs"],
+  ["m\u1EDF r\u1ED9ng sang th\u1ECB tr\u01B0\u1EDDng m\u1EDBi", "expand into a new market"],
+  ["gi\u1EA3i quy\u1EBFt nguy\xEAn nh\xE2n g\u1ED1c r\u1EC5", "address the root cause"]
+].map(([vi, en]) => ({ vi, en }));
+var B2_TOPICS = [
+  ["s\u1EF1 minh b\u1EA1ch trong qu\u1EA3n tr\u1ECB", "transparency in governance"],
+  ["t\u1EF1 \u0111\u1ED9ng h\xF3a quy tr\xECnh", "process automation"],
+  ["b\u1EA3o m\u1EADt d\u1EEF li\u1EC7u c\xE1 nh\xE2n", "personal data security"],
+  ["chu\u1ED7i cung \u1EE9ng linh ho\u1EA1t", "a resilient supply chain"],
+  ["v\u0103n h\xF3a ph\u1EA3n h\u1ED3i c\u1EDFi m\u1EDF", "an open feedback culture"],
+  ["\u0111\u1EA7u t\u01B0 d\xE0i h\u1EA1n v\xE0o nh\xE2n s\u1EF1", "long-term investment in people"],
+  ["ti\xEAu chu\u1EA9n d\u1ECBch v\u1EE5 nh\u1EA5t qu\xE1n", "consistent service standards"],
+  ["chi\u1EBFn l\u01B0\u1EE3c t\u0103ng tr\u01B0\u1EDFng c\xF3 tr\xE1ch nhi\u1EC7m", "a responsible growth strategy"],
+  ["h\u1EE3p t\xE1c gi\u1EEFa c\xE1c ph\xF2ng ban", "cross-department collaboration"],
+  ["m\u1EE5c ti\xEAu gi\u1EA3m ph\xE1t th\u1EA3i", "emission-reduction targets"]
+].map(([vi, en]) => ({ vi, en }));
+var B2_FRAMES = [
+  { vi: "\u0110\u1EC3 \u0111\u1EA1t m\u1EE5c ti\xEAu, c\xF4ng ty c\u1EA7n {item}.", en: "To achieve its goal, the company needs to {item}.", hint: "to achieve its goal = \u0111\u1EC3 \u0111\u1EA1t m\u1EE5c ti\xEAu; need to = c\u1EA7n", items: B2_ITEMS },
+  { vi: "Ban l\xE3nh \u0111\u1EA1o \u0111ang xem x\xE9t {item}.", en: "The leadership team is considering {item}.", hint: "leadership team = ban l\xE3nh \u0111\u1EA1o; consider = xem x\xE9t", items: B2_TOPICS },
+  { vi: "Ch\xFAng t\xF4i ph\u1EA3i c\xE2n nh\u1EAFc k\u1EF9 tr\u01B0\u1EDBc khi {item}.", en: "We must think carefully before we {item}.", hint: "think carefully = c\xE2n nh\u1EAFc k\u1EF9; before = tr\u01B0\u1EDBc khi", items: B2_ITEMS },
+  { vi: "B\xE1o c\xE1o cho th\u1EA5y {item} c\xF3 th\u1EC3 t\u1EA1o ra l\u1EE3i th\u1EBF c\u1EA1nh tranh.", en: "The report shows that {item} could create a competitive advantage.", hint: "report shows = b\xE1o c\xE1o cho th\u1EA5y; competitive advantage = l\u1EE3i th\u1EBF c\u1EA1nh tranh", items: B2_TOPICS },
+  { vi: "N\u1EBFu {item}, ch\xFAng ta s\u1EBD ti\u1EBFt ki\u1EC7m \u0111\u01B0\u1EE3c nhi\u1EC1u th\u1EDDi gian.", en: "If we {item}, we will save a great deal of time.", hint: "if = n\u1EBFu; save time = ti\u1EBFt ki\u1EC7m th\u1EDDi gian", items: B2_ITEMS },
+  { vi: "Nh\xF3m \u0111\xE3 th\u1ED1ng nh\u1EA5t s\u1EBD \u01B0u ti\xEAn {item}.", en: "The team agreed to prioritize {item}.", hint: "agree to prioritize = th\u1ED1ng nh\u1EA5t \u01B0u ti\xEAn", items: B2_ITEMS },
+  { vi: "M\u1ED9t th\xE1ch th\u1EE9c l\u1EDBn l\xE0 \u0111\u1EA3m b\u1EA3o {item}.", en: "A major challenge is ensuring {item}.", hint: "major challenge = th\xE1ch th\u1EE9c l\u1EDBn; ensure = \u0111\u1EA3m b\u1EA3o", items: B2_TOPICS },
+  { vi: "Ch\xFAng t\xF4i c\u1EA7n b\u1EB1ng ch\u1EE9ng r\xF5 r\xE0ng tr\u01B0\u1EDBc khi \u0111\u1EA7u t\u01B0 v\xE0o {item}.", en: "We need clear evidence before investing in {item}.", hint: "clear evidence = b\u1EB1ng ch\u1EE9ng r\xF5 r\xE0ng; invest in = \u0111\u1EA7u t\u01B0 v\xE0o", items: B2_TOPICS },
+  { vi: "K\u1EBF ho\u1EA1ch m\u1EDBi s\u1EBD gi\xFAp doanh nghi\u1EC7p {item}.", en: "The new plan will help the business {item}.", hint: "new plan = k\u1EBF ho\u1EA1ch m\u1EDBi; help the business = gi\xFAp doanh nghi\u1EC7p", items: B2_ITEMS },
+  { vi: "T\xF4i cho r\u1EB1ng {item} n\xEAn \u0111\u01B0\u1EE3c \u0111o l\u01B0\u1EDDng th\u01B0\u1EDDng xuy\xEAn.", en: "I believe that {item} should be measured regularly.", hint: "should be measured = n\xEAn \u0111\u01B0\u1EE3c \u0111o l\u01B0\u1EDDng; regularly = th\u01B0\u1EDDng xuy\xEAn", items: B2_TOPICS }
+];
+var C1_ITEMS = [
+  ["thi\u1EBFt l\u1EADp m\u1ED9t khung qu\u1EA3n tr\u1ECB minh b\u1EA1ch", "establish a transparent governance framework"],
+  ["\u0111\xE1nh gi\xE1 t\xE1c \u0111\u1ED9ng d\xE0i h\u1EA1n c\u1EE7a ch\xEDnh s\xE1ch", "assess the long-term impact of the policy"],
+  ["\u0111i\u1EC1u ph\u1ED1i l\u1EE3i \xEDch c\u1EE7a nhi\u1EC1u b\xEAn li\xEAn quan", "coordinate the interests of multiple stakeholders"],
+  ["c\u1EE7ng c\u1ED1 kh\u1EA3 n\u0103ng ch\u1ED1ng ch\u1ECBu c\u1EE7a t\u1ED5 ch\u1EE9c", "strengthen the organization's resilience"],
+  ["\u0111\u1EA7u t\u01B0 c\xF3 ch\u1ECDn l\u1ECDc v\xE0o \u0111\u1ED5i m\u1EDBi s\xE1ng t\u1EA1o", "invest selectively in innovation"],
+  ["gi\u1EA3m thi\u1EC3u nh\u1EEFng h\u1EC7 qu\u1EA3 ngo\xE0i d\u1EF1 ki\u1EBFn", "mitigate unintended consequences"],
+  ["x\xE2y d\u1EF1ng s\u1EF1 \u0111\u1ED3ng thu\u1EADn trong c\u1ED9ng \u0111\u1ED3ng", "build consensus within the community"],
+  ["b\u1EA3o v\u1EC7 quy\u1EC1n ri\xEAng t\u01B0 trong k\u1EF7 nguy\xEAn s\u1ED1", "protect privacy in the digital age"],
+  ["di\u1EC5n gi\u1EA3i d\u1EEF li\u1EC7u m\u1ED9t c\xE1ch c\xF3 tr\xE1ch nhi\u1EC7m", "interpret data responsibly"],
+  ["c\xE2n b\u1EB1ng t\u0103ng tr\u01B0\u1EDFng v\u1EDBi ph\xE1t tri\u1EC3n b\u1EC1n v\u1EEFng", "balance growth with sustainable development"]
+].map(([vi, en]) => ({ vi, en }));
+var C1_TOPICS = [
+  ["nh\u1EEFng c\u1EA3i c\xE1ch th\u1EC3 ch\u1EBF s\xE2u r\u1ED9ng", "far-reaching institutional reforms"],
+  ["m\u1ED9t chi\u1EBFn l\u01B0\u1EE3c chuy\u1EC3n \u0111\u1ED5i s\u1ED1 to\xE0n di\u1EC7n", "a comprehensive digital-transformation strategy"],
+  ["m\xF4 h\xECnh kinh t\u1EBF tu\u1EA7n ho\xE0n", "a circular-economy model"],
+  ["s\u1EF1 ph\xE2n c\u1EF1c ng\xE0y c\xE0ng gia t\u0103ng", "increasing polarization"],
+  ["ti\xEAu chu\u1EA9n \u0111\u1EA1o \u0111\u1EE9c nh\u1EA5t qu\xE1n", "consistent ethical standards"],
+  ["c\xE1ch ti\u1EBFp c\u1EADn d\u1EF1a tr\xEAn b\u1EB1ng ch\u1EE9ng", "an evidence-based approach"],
+  ["t\u1EA7m nh\xECn d\xE0i h\u1EA1n cho gi\xE1o d\u1EE5c", "a long-term vision for education"],
+  ["c\u01A1 ch\u1EBF h\u1EE3p t\xE1c xuy\xEAn bi\xEAn gi\u1EDBi", "a cross-border cooperation mechanism"],
+  ["c\xE1c r\u1EE7i ro \u0111\u1ECBa ch\xEDnh tr\u1ECB m\u1EDBi n\u1ED5i", "emerging geopolitical risks"],
+  ["m\u1ED9t n\u1EC1n v\u0103n h\xF3a h\u1ECDc h\u1ECFi li\xEAn t\u1EE5c", "a culture of continuous learning"]
+].map(([vi, en]) => ({ vi, en }));
+var C1_FRAMES = [
+  { vi: "M\u1ED9t c\xE1ch ti\u1EBFp c\u1EADn th\u1EADn tr\u1ECDng l\xE0 {item}.", en: "A prudent approach would be to {item}.", hint: "prudent approach = c\xE1ch ti\u1EBFp c\u1EADn th\u1EADn tr\u1ECDng; would be to = l\xE0 n\xEAn", items: C1_ITEMS },
+  { vi: "Cu\u1ED9c tranh lu\u1EADn hi\u1EC7n nay t\u1EADp trung v\xE0o {item}.", en: "The current debate centers on {item}.", hint: "current debate = cu\u1ED9c tranh lu\u1EADn hi\u1EC7n nay; center on = t\u1EADp trung v\xE0o", items: C1_TOPICS },
+  { vi: "Ch\xEDnh s\xE1ch ch\u1EC9 c\xF3 \xFD ngh\u0129a n\u1EBFu n\xF3 c\xF3 th\u1EC3 {item}.", en: "The policy is meaningful only if it can {item}.", hint: "meaningful only if = ch\u1EC9 c\xF3 \xFD ngh\u0129a n\u1EBFu", items: C1_ITEMS },
+  { vi: "C\xE1c chuy\xEAn gia c\u1EA3nh b\xE1o r\u1EB1ng {item} c\xF3 th\u1EC3 l\xE0m tr\u1EA7m tr\u1ECDng th\xEAm b\u1EA5t b\xECnh \u0111\u1EB3ng.", en: "Experts warn that {item} could exacerbate inequality.", hint: "warn that = c\u1EA3nh b\xE1o r\u1EB1ng; exacerbate inequality = l\xE0m tr\u1EA7m tr\u1ECDng th\xEAm b\u1EA5t b\xECnh \u0111\u1EB3ng", items: C1_TOPICS },
+  { vi: "Vi\u1EC7c c\xE2n nh\u1EAFc {item} \u0111\xF2i h\u1ECFi s\u1EF1 ph\u1ED1i h\u1EE3p li\xEAn ng\xE0nh.", en: "Addressing {item} requires interdisciplinary coordination.", hint: "addressing = vi\u1EC7c gi\u1EA3i quy\u1EBFt; interdisciplinary = li\xEAn ng\xE0nh", items: C1_TOPICS },
+  { vi: "Ch\xFAng ta kh\xF4ng n\xEAn \u0111\xE1nh gi\xE1 th\u1EA5p t\u1EA7m quan tr\u1ECDng c\u1EE7a vi\u1EC7c c\u1ED1 g\u1EAFng {item}.", en: "We should not underestimate the importance of making an effort to {item}.", hint: "underestimate = \u0111\xE1nh gi\xE1 th\u1EA5p; importance = t\u1EA7m quan tr\u1ECDng", items: C1_ITEMS },
+  { vi: "M\u1ED9t h\u1EC7 qu\u1EA3 kh\xF3 tr\xE1nh kh\u1ECFi l\xE0 {item}.", en: "An inevitable consequence is {item}.", hint: "inevitable consequence = h\u1EC7 qu\u1EA3 kh\xF3 tr\xE1nh kh\u1ECFi", items: C1_TOPICS },
+  { vi: "B\xE1o c\xE1o nh\u1EA5n m\u1EA1nh nhu c\u1EA7u c\u1EA5p thi\u1EBFt ph\u1EA3i {item}.", en: "The report underscores the pressing need to {item}.", hint: "underscore = nh\u1EA5n m\u1EA1nh; pressing need = nhu c\u1EA7u c\u1EA5p thi\u1EBFt", items: C1_ITEMS },
+  { vi: "M\u1ED9t th\u1ECFa hi\u1EC7p kh\u1EA3 thi c\xF3 th\u1EC3 bao g\u1ED3m vi\u1EC7c {item}.", en: "A viable compromise could involve an effort to {item}.", hint: "viable compromise = th\u1ECFa hi\u1EC7p kh\u1EA3 thi; involve = bao g\u1ED3m", items: C1_ITEMS },
+  { vi: "\u0110\u1EC3 duy tr\xEC ni\u1EC1m tin c\xF4ng ch\xFAng, c\xE1c c\u01A1 quan c\u1EA7n quan t\xE2m \u0111\u1EBFn {item}.", en: "To maintain public trust, institutions must address {item}.", hint: "maintain public trust = duy tr\xEC ni\u1EC1m tin c\xF4ng ch\xFAng", items: C1_TOPICS }
+];
+var ADULT_QUESTION_BANK = [
+  ...buildLevel("A1", 5001, A1_FRAMES),
+  ...buildLevel("A2", 5101, A2_FRAMES),
+  ...buildLevel("B1", 5201, B1_FRAMES),
+  ...buildLevel("B2", 5301, B2_FRAMES),
+  ...buildLevel("C1", 5401, C1_FRAMES)
+];
 
 // src/data/initialQuestions.ts
 var INITIAL_QUESTIONS = [
@@ -1029,14 +1304,409 @@ var INITIAL_QUESTIONS = [
     created_date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
     category: "hospitality",
     level: "C1"
+  },
+  ...ADULT_QUESTION_BANK
+];
+
+// src/data/specializedQuestions.ts
+var templates = {
+  it: [
+    { vi: "Nh\xF3m ph\xE1t tri\u1EC3n s\u1EBD r\xE0 so\xE1t pull request tr\u01B0\u1EDBc cu\u1ED9c h\u1ECDp.", en: "The development team will review the pull request before the meeting.", hint: "review a pull request", level: "B1" },
+    { vi: "Ch\xFAng t\xF4i c\u1EA7n ki\u1EC3m tra nh\u1EADt k\xFD \u0111\u1EC3 t\xECm nguy\xEAn nh\xE2n l\u1ED7i.", en: "We need to check the logs to find the root cause of the bug.", hint: "check the logs; root cause", level: "B1" },
+    { vi: "K\u1EF9 s\u01B0 \u0111\xE3 tri\u1EC3n khai b\u1EA3n s\u1EEDa l\u1ED7i l\xEAn m\xF4i tr\u01B0\u1EDDng th\u1EED nghi\u1EC7m.", en: "The engineer deployed the fix to the staging environment.", hint: "deploy a fix; staging environment", level: "B1" },
+    { vi: "API n\xE0y c\u1EA7n x\xE1c th\u1EF1c tr\u01B0\u1EDBc khi nh\u1EADn d\u1EEF li\u1EC7u kh\xE1ch h\xE0ng.", en: "This API needs authentication before it accepts customer data.", hint: "needs authentication; accept data", level: "B2" },
+    { vi: "Ch\xFAng ta n\xEAn t\u1EF1 \u0111\u1ED9ng h\xF3a b\u01B0\u1EDBc ki\u1EC3m th\u1EED h\u1ED3i quy.", en: "We should automate the regression testing step.", hint: "automate regression testing", level: "B2" },
+    { vi: "Ki\u1EBFn tr\xFAc m\u1EDBi gi\xFAp h\u1EC7 th\u1ED1ng m\u1EDF r\u1ED9ng d\u1EC5 d\xE0ng h\u01A1n.", en: "The new architecture makes the system easier to scale.", hint: "architecture; scale", level: "B2" },
+    { vi: "H\xE3y ghi r\xF5 thay \u0111\u1ED5i ph\xE1 v\u1EE1 trong t\xE0i li\u1EC7u ph\xE1t h\xE0nh.", en: "Please document the breaking changes in the release notes.", hint: "breaking changes; release notes", level: "C1" },
+    { vi: "M\xE1y ch\u1EE7 c\u01A1 s\u1EDF d\u1EEF li\u1EC7u c\u1EA7n m\u1ED9t b\u1EA3n sao l\u01B0u m\xE3 h\xF3a.", en: "The database server needs an encrypted backup.", hint: "database server; encrypted backup", level: "A2" },
+    { vi: "Nh\xF3m \u0111ang theo d\xF5i \u0111\u1ED9 tr\u1EC5 c\u1EE7a d\u1ECBch v\u1EE5 theo th\u1EDDi gian th\u1EF1c.", en: "The team is monitoring the service latency in real time.", hint: "monitor service latency", level: "B1" },
+    { vi: "Ch\xFAng t\xF4i s\u1EBD ph\xE1t h\xE0nh t\xEDnh n\u0103ng sau khi s\u1EA3n ph\u1EA9m \u0111\u01B0\u1EE3c ph\xEA duy\u1EC7t.", en: "We will release the feature after the product is approved.", hint: "release a feature; be approved", level: "A2" }
+  ],
+  business: [
+    { vi: "Ch\xFAng t\xF4i mu\u1ED1n hi\u1EC3u r\xF5 m\u1EE5c ti\xEAu c\u1EE7a kh\xE1ch h\xE0ng tr\u01B0\u1EDBc khi b\xE1o gi\xE1.", en: "We want to understand the client goals before preparing a quote.", hint: "client goals; prepare a quote", level: "B1" },
+    { vi: "\u0110\u1ED9i kinh doanh s\u1EBD tr\xECnh b\xE0y \u0111\u1EC1 xu\u1EA5t v\xE0o th\u1EE9 S\xE1u.", en: "The sales team will present the proposal on Friday.", hint: "present a proposal", level: "A2" },
+    { vi: "Hai b\xEAn c\u1EA7n th\u1ED1ng nh\u1EA5t \u0111i\u1EC1u kho\u1EA3n thanh to\xE1n trong h\u1EE3p \u0111\u1ED3ng.", en: "Both parties need to agree on the payment terms in the contract.", hint: "agree on payment terms", level: "B1" },
+    { vi: "Ch\xFAng t\xF4i \u0111\xE3 t\u0103ng t\u1EF7 l\u1EC7 chuy\u1EC3n \u0111\u1ED5i nh\u1EDD th\u1EED nghi\u1EC7m A/B.", en: "We increased the conversion rate through A/B testing.", hint: "conversion rate; A/B testing", level: "B2" },
+    { vi: "H\xE3y g\u1EEDi b\u1EA3n t\xF3m t\u1EAFt cu\u1ED9c h\u1ECDp cho t\u1EA5t c\u1EA3 c\xE1c b\xEAn li\xEAn quan.", en: "Please send the meeting summary to all stakeholders.", hint: "meeting summary; stakeholders", level: "B1" },
+    { vi: "Nh\xE0 \u0111\u1EA7u t\u01B0 mu\u1ED1n th\u1EA5y k\u1EBF ho\u1EA1ch t\u0103ng tr\u01B0\u1EDFng b\u1EC1n v\u1EEFng.", en: "The investor wants to see a sustainable growth plan.", hint: "sustainable growth plan", level: "B2" },
+    { vi: "Ch\xFAng ta n\xEAn \u01B0u ti\xEAn kh\xE1ch h\xE0ng c\xF3 nhu c\u1EA7u c\u1EA5p thi\u1EBFt nh\u1EA5t.", en: "We should prioritize customers with the most urgent needs.", hint: "prioritize customers; urgent needs", level: "B1" },
+    { vi: "B\xE1o c\xE1o qu\xFD cho th\u1EA5y doanh thu \u0111\xE3 v\u01B0\u1EE3t d\u1EF1 b\xE1o.", en: "The quarterly report shows that revenue exceeded the forecast.", hint: "quarterly report; exceed the forecast", level: "B2" },
+    { vi: "Nh\xE2n vi\xEAn ch\u0103m s\xF3c kh\xE1ch h\xE0ng s\u1EBD g\u1ECDi l\u1EA1i trong h\xF4m nay.", en: "The customer success representative will call back today.", hint: "customer success; call back", level: "A2" },
+    { vi: "M\u1ED9t chi\u1EBFn l\u01B0\u1EE3c \u0111\u1ECBnh gi\xE1 linh ho\u1EA1t c\xF3 th\u1EC3 b\u1EA3o v\u1EC7 l\u1EE3i nhu\u1EADn.", en: "A flexible pricing strategy can protect our profit margin.", hint: "pricing strategy; profit margin", level: "C1" }
+  ],
+  hospitality: [
+    { vi: "Nh\xE2n vi\xEAn l\u1EC5 t\xE2n s\u1EBD x\xE1c nh\u1EADn \u0111\u1EB7t ph\xF2ng c\u1EE7a qu\xFD kh\xE1ch.", en: "The front desk agent will confirm your room reservation.", hint: "front desk; confirm a reservation", level: "A2" },
+    { vi: "Nh\xE0 h\xE0ng c\xF3 th\u1EC3 chu\u1EA9n b\u1ECB m\u1ED9t b\u1EEFa \u0103n kh\xF4ng ch\u1EE9a s\u1EEFa.", en: "The restaurant can prepare a dairy-free meal.", hint: "dairy-free meal", level: "A2" },
+    { vi: "Ch\xFAng t\xF4i r\u1EA5t ti\u1EBFc v\xEC \u0111i\u1EC1u h\xF2a trong ph\xF2ng ch\u01B0a ho\u1EA1t \u0111\u1ED9ng.", en: "We are very sorry that the air conditioning in the room is not working.", hint: "air conditioning; not working", level: "A2" },
+    { vi: "H\u01B0\u1EDBng d\u1EABn vi\xEAn s\u1EBD \u0111\xF3n \u0111o\xE0n t\u1EA1i s\u1EA3nh l\xFAc t\xE1m gi\u1EDD.", en: "The tour guide will meet the group in the lobby at eight.", hint: "tour guide; meet the group", level: "A1" },
+    { vi: "Xin vui l\xF2ng xu\u1EA5t tr\xECnh h\u1ED9 chi\u1EBFu khi nh\u1EADn ph\xF2ng.", en: "Please present your passport when you check in.", hint: "present a passport; check in", level: "A1" },
+    { vi: "Kh\xE1ch s\u1EA1n cung c\u1EA5p d\u1ECBch v\u1EE5 \u0111\u01B0a \u0111\xF3n s\xE2n bay mi\u1EC5n ph\xED.", en: "The hotel provides a complimentary airport transfer service.", hint: "complimentary transfer", level: "B1" },
+    { vi: "Ch\xFAng t\xF4i s\u1EBD x\u1EED l\xFD khi\u1EBFu n\u1EA1i c\u1EE7a qu\xFD kh\xE1ch ngay l\u1EADp t\u1EE9c.", en: "We will handle your complaint immediately.", hint: "handle a complaint", level: "B1" },
+    { vi: "B\u1EEFa s\xE1ng \u0111\u01B0\u1EE3c ph\u1EE5c v\u1EE5 t\u1EEB s\xE1u gi\u1EDD r\u01B0\u1EE1i \u0111\u1EBFn m\u01B0\u1EDDi gi\u1EDD.", en: "Breakfast is served from half past six until ten.", hint: "breakfast is served", level: "A1" },
+    { vi: "Ph\xF2ng n\xE0y c\xF3 t\u1EA7m nh\xECn \u0111\u1EB9p ra bi\u1EC3n.", en: "This room has a beautiful view of the sea.", hint: "a view of the sea", level: "A1" },
+    { vi: "Qu\u1EA3n l\xFD s\u1EBD ki\u1EC3m tra ch\u1EA5t l\u01B0\u1EE3ng d\u1ECBch v\u1EE5 sau khi kh\xE1ch r\u1EDDi \u0111i.", en: "The manager will check the service quality after the guest leaves.", hint: "service quality; after the guest leaves", level: "B2" }
+  ]
+};
+function makeQuestion(category, index) {
+  const item = templates[category][index % templates[category].length];
+  const batch = Math.floor(index / templates[category].length) + 1;
+  const context = batch === 1 ? "" : ` (ca ${batch})`;
+  const answer = `${item.en.replace(/\.$/, "")}${context}.`;
+  return {
+    id: 1e5 + (category === "it" ? 0 : category === "business" ? 1e3 : 2e3) + index,
+    vi: `${item.vi}${context}`,
+    hints: item.hint,
+    answers: [answer, item.en],
+    category,
+    level: item.level,
+    created_date: "2026-01-01"
+  };
+}
+var SPECIALIZED_QUESTIONS = ["it", "business", "hospitality"].flatMap((category) => Array.from({ length: 1e3 }, (_, index) => makeQuestion(category, index)));
+
+// server/durableDuel.ts
+import crypto from "node:crypto";
+var LEASE_MS = 6e4;
+var push = (s, event) => {
+  s.events.push({ ...event, eventId: ++s.seq });
+  s.events = s.events.slice(-80);
+};
+var norm = (s) => s.toLowerCase().trim().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[.,!?;:()]/g, "").replace(/\s+/g, " ");
+function participant(player, host) {
+  const { email, ...identity } = player;
+  return { ...identity, isHost: host, score: 0, currentQuestionIndex: 0, answeredCount: 0, isReady: host, isFinished: false };
+}
+function broadcast(db, room, event, except) {
+  for (const key of room.members) if (key !== except && db.sessions[key]) push(db.sessions[key], event);
+}
+function leave(db, key) {
+  const s = db.sessions[key];
+  if (!s) return;
+  delete s.queued;
+  const r = s.roomId && db.rooms[s.roomId];
+  delete s.roomId;
+  for (const [id, inv] of Object.entries(db.invites)) if (inv.from === key || inv.to === key) delete db.invites[id];
+  if (!r) return;
+  r.members = r.members.filter((k) => k !== key);
+  if (!r.members.length) {
+    delete db.rooms[r.roomId];
+    return;
   }
+  const remaining = db.sessions[r.members[0]];
+  if (r.status === "waiting") delete r.players[s.player.id];
+  if (remaining) {
+    r.players[remaining.player.id].isHost = true;
+    if (r.status === "in_progress" || r.status === "countdown") {
+      r.status = "finished";
+      r.winnerId = remaining.player.id;
+    }
+  }
+  broadcast(db, r, { type: "player_left_event", playerId: s.player.id });
+}
+function finish(r) {
+  const ps = Object.values(r.players);
+  if (ps.every((p) => p.isFinished)) {
+    r.status = "finished";
+    r.winnerId = ps[0].score === ps[1].score ? null : ps.sort((a, b) => b.score - a.score)[0].id;
+  }
+}
+function start(db, r, questions, now) {
+  let pool = questions.filter((q) => r.category === "all" || q.category === r.category);
+  if (r.level && r.level !== "all") {
+    const levelPool = pool.filter((q) => (q.level || "B1") === r.level);
+    if (levelPool.length >= r.questionCount) pool = levelPool;
+  }
+  if (pool.length < r.questionCount) pool = questions;
+  r.questions = [...pool].sort(() => Math.random() - 0.5).slice(0, r.questionCount);
+  if (r.mode === "word") r.questions = r.questions.map((q) => {
+    const vi = String(q.vi || "").replace(/[.,!?;:()]/g, "").split(/\s+/).find(Boolean) || q.vi;
+    const answer = String(q.answers?.[0] || "").replace(/[.,!?;:()]/g, "").split(/\s+/).find(Boolean) || "";
+    return { ...q, vi, hints: `T\u1EEB tr\u1ECDng t\xE2m: ${answer}`, answers: [answer], wordBank: [answer] };
+  });
+  if (!r.questions.length) throw Error("Ch\u01B0a c\xF3 c\xE2u h\u1ECFi \u0111\u1EC3 \u0111\u1EA5u.");
+  r.questionCount = r.questions.length;
+  r.status = "countdown";
+  r.roundStartedAt = now + 3e3;
+  r.firstCorrectAnswers = {};
+  r.rematchVotes = {};
+  r.winnerId = null;
+  for (const key of r.members) {
+    const s = db.sessions[key], old = r.players[s.player.id];
+    r.players[s.player.id] = { ...participant(s.player, old.isHost), isReady: true };
+  }
+}
+function transition(db, key, cmd, now, questions, identity) {
+  for (const [k, s2] of Object.entries(db.sessions)) if (now - s2.seen > LEASE_MS) {
+    leave(db, k);
+    delete db.sessions[k];
+  }
+  for (const [id, inv] of Object.entries(db.invites)) if (inv.expiresAt <= now) delete db.invites[id];
+  for (const r2 of Object.values(db.rooms)) if (r2.status === "countdown" && now >= r2.roundStartedAt) {
+    r2.status = "in_progress";
+    broadcast(db, r2, { type: "game_started" });
+  }
+  if (cmd.type === "register_lobby" && !db.sessions[key]) {
+    if (!identity) throw Error("Vui l\xF2ng k\u1EBFt n\u1ED1i l\u1EA1i.");
+    if (Object.keys(db.sessions).length >= 200) throw Error("S\u1EA3nh \u0111ang \u0111\u1EA7y. Vui l\xF2ng th\u1EED l\u1EA1i sau.");
+    if (Object.values(db.sessions).some((s2) => s2.player.id === identity.id)) throw Error("B\u1EA1n \u0111ang m\u1EDF \u0111\u1EA5u tr\u01B0\u1EDDng \u1EDF tab kh\xE1c. H\xE3y \u0111\xF3ng tab \u0111\xF3 tr\u01B0\u1EDBc.");
+    db.sessions[key] = { player: identity, seen: now, events: [], seq: 0, requests: [] };
+  }
+  const s = db.sessions[key];
+  if (!s) throw Error("Phi\xEAn \u0111\u1EA5u \u0111\xE3 h\u1EBFt h\u1EA1n. Vui l\xF2ng k\u1EBFt n\u1ED1i l\u1EA1i.");
+  s.seen = now;
+  if (cmd.requestId && s.requests.includes(cmd.requestId)) return;
+  const emit = (event) => push(s, event);
+  const r = s.roomId ? db.rooms[s.roomId] : void 0;
+  const p = r?.players[s.player.id];
+  const fail = (message) => {
+    throw Error(message);
+  };
+  const count = [5, 10, 15, 20].includes(cmd.questionCount) ? cmd.questionCount : 5;
+  const category = typeof cmd.category === "string" ? cmd.category.slice(0, 80) : "all";
+  const level = typeof cmd.level === "string" ? cmd.level.slice(0, 10) : "all";
+  const mode = cmd.mode === "word" ? "word" : "sentence";
+  const join = (room) => {
+    if (s.roomId || room.status !== "waiting" || room.members.length >= 2) fail("Ph\xF2ng \u0111\xE3 \u0111\u1EA7y, \u0111\xE3 b\u1EAFt \u0111\u1EA7u ho\u1EB7c b\u1EA1n \u0111ang \u1EDF ph\xF2ng kh\xE1c.");
+    delete s.queued;
+    s.roomId = room.roomId;
+    room.members.push(key);
+    room.players[s.player.id] = participant(s.player, room.members.length === 1);
+    emit({ type: "joined_success", roomId: room.roomId, playerId: s.player.id, isHost: room.members.length === 1 });
+  };
+  const create = () => {
+    const roomId = `DUEL-${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
+    const room = { roomId, members: [], players: {}, status: "waiting", questionCount: count, category, level, mode, questions: [], currentRound: 0, roundTimerSeconds: 60, rematchVotes: {} };
+    db.rooms[roomId] = room;
+    return room;
+  };
+  switch (cmd.type) {
+    case "register_lobby":
+    case "poll":
+      break;
+    case "join_room": {
+      if (s.roomId) fail("H\xE3y r\u1EDDi ph\xF2ng hi\u1EC7n t\u1EA1i tr\u01B0\u1EDBc.");
+      const room = cmd.roomId ? db.rooms[String(cmd.roomId).trim().toUpperCase()] : create();
+      if (!room) fail("Ph\xF2ng kh\xF4ng t\u1ED3n t\u1EA1i ho\u1EB7c \u0111\xE3 \u0111\xF3ng.");
+      join(room);
+      break;
+    }
+    case "find_match": {
+      if (s.roomId) fail("H\xE3y r\u1EDDi ph\xF2ng hi\u1EC7n t\u1EA1i tr\u01B0\u1EDBc.");
+      const other = Object.entries(db.sessions).filter(([k, v]) => k !== key && v.queued && !v.roomId && v.queued.category === category && v.queued.level === level && v.queued.mode === mode).sort((a, b) => a[1].queued.at - b[1].queued.at)[0];
+      if (!other) {
+        s.queued = { at: now, category, count, level, mode };
+        emit({ type: "waiting_in_queue" });
+        break;
+      }
+      const [ok, os] = other;
+      const room = create();
+      room.category = os.queued.category;
+      room.questionCount = os.queued.count;
+      room.level = os.queued.level;
+      room.mode = os.queued.mode;
+      room.members.push(ok);
+      room.players[os.player.id] = participant(os.player, true);
+      os.roomId = room.roomId;
+      delete os.queued;
+      push(os, { type: "joined_success", roomId: room.roomId, playerId: os.player.id, isHost: true });
+      join(room);
+      start(db, room, questions, now);
+      broadcast(db, room, { type: "match_found", roomId: room.roomId });
+      break;
+    }
+    case "cancel_find_match":
+      delete s.queued;
+      emit({ type: "search_cancelled" });
+      break;
+    case "leave_room":
+      leave(db, key);
+      break;
+    case "send_invite": {
+      if (!r || r.status !== "waiting" || r.members.length !== 1) fail("H\xE3y t\u1EA1o ph\xF2ng tr\u1ED1ng tr\u01B0\u1EDBc khi m\u1EDDi.");
+      const target = Object.entries(db.sessions).find(([k, v]) => k !== key && (v.player.id === cmd.targetId || cmd.targetEmail && v.player.email === String(cmd.targetEmail).toLowerCase().trim()));
+      if (!target || target[1].roomId || target[1].queued) fail("B\u1EA1n n\xE0y \u0111ang b\u1EADn ho\u1EB7c ch\u01B0a v\xE0o s\u1EA3nh. H\xE3y g\u1EEDi link ph\xF2ng.");
+      for (const [id, inv] of Object.entries(db.invites)) if (inv.from === key) delete db.invites[id];
+      const inviteId = crypto.randomUUID(), expiresAt = now + 6e4;
+      db.invites[inviteId] = { from: key, to: target[0], roomId: r.roomId, expiresAt };
+      push(target[1], { type: "duel_invitation", inviteId, roomId: r.roomId, fromName: s.player.name, expiresAt });
+      emit({ type: "invite_sent" });
+      break;
+    }
+    case "respond_invite": {
+      const inv = db.invites[cmd.inviteId];
+      if (!inv || inv.to !== key) fail("L\u1EDDi m\u1EDDi \u0111\xE3 h\u1EBFt h\u1EA1n.");
+      if (cmd.accept) {
+        const room = db.rooms[inv.roomId];
+        if (!room || !room.members.includes(inv.from)) fail("Ph\xF2ng kh\xF4ng c\xF2n kh\u1EA3 d\u1EE5ng.");
+        join(room);
+      } else if (db.sessions[inv.from]) push(db.sessions[inv.from], { type: "invite_declined" });
+      delete db.invites[cmd.inviteId];
+      break;
+    }
+    case "toggle_ready":
+      if (r?.status === "waiting" && p) p.isReady = !p.isReady;
+      break;
+    case "update_room_settings":
+      if (r?.status === "waiting" && p?.isHost) {
+        r.questionCount = count;
+        r.category = category;
+        r.level = level;
+        r.mode = mode;
+      }
+      break;
+    case "start_game":
+      if (!r || !p?.isHost || r.status !== "waiting" || r.members.length !== 2 || !Object.values(r.players).every((v) => v.isReady)) fail("C\u1EA7n \u0111\u1EE7 hai ng\u01B0\u1EDDi s\u1EB5n s\xE0ng v\xE0 ch\u1EE7 ph\xF2ng b\u1EAFt \u0111\u1EA7u.");
+      start(db, r, questions, now);
+      break;
+    case "submit_answer":
+    case "skip_question": {
+      if (!r || r.status !== "in_progress" || !p || p.isFinished) fail("Tr\u1EADn ch\u01B0a b\u1EAFt \u0111\u1EA7u ho\u1EB7c b\u1EA1n \u0111\xE3 ho\xE0n t\u1EA5t.");
+      const index = p.currentQuestionIndex;
+      if (cmd.questionIndex !== index) fail("C\xE2u h\u1ECFi \u0111\xE3 thay \u0111\u1ED5i. H\xE3y th\u1EED l\u1EA1i.");
+      const q = r.questions[index];
+      if (cmd.type === "submit_answer") {
+        if (typeof cmd.answer !== "string" || cmd.answer.length > 2e3) fail("C\xE2u tr\u1EA3 l\u1EDDi kh\xF4ng h\u1EE3p l\u1EC7.");
+        const correct = q.answers.some((a) => norm(a) === norm(cmd.answer));
+        if (!correct) {
+          emit({ type: "answer_result", correct: false, message: "B\u1EA3n d\u1ECBch ch\u01B0a \u0111\xFAng. H\xE3y th\u1EED l\u1EA1i!" });
+          break;
+        }
+        const isFirst = !r.firstCorrectAnswers[index], pointsEarned = isFirst ? 150 : 100;
+        if (isFirst) r.firstCorrectAnswers[index] = s.player.id;
+        p.score += pointsEarned;
+        emit({ type: "answer_result", correct: true, pointsEarned, isFirst, questionIndex: index });
+        broadcast(db, r, { type: "opponent_scored", playerName: p.name, questionIndex: index, isFirst }, key);
+      }
+      p.currentQuestionIndex++;
+      p.answeredCount++;
+      p.isFinished = p.currentQuestionIndex >= r.questions.length;
+      finish(r);
+      break;
+    }
+    case "request_rematch":
+      if (!r || r.status !== "finished" || r.members.length !== 2) fail("C\u1EA7n \u0111\u1EE7 hai ng\u01B0\u1EDDi \u0111\u1EC3 t\xE1i \u0111\u1EA5u.");
+      r.rematchVotes[s.player.id] = true;
+      if (r.members.every((k) => r.rematchVotes[db.sessions[k].player.id])) start(db, r, questions, now);
+      else broadcast(db, r, { type: "rematch_requested_by_player" }, key);
+      break;
+    case "send_emote":
+      if (r && ["\u{1F525}", "\u26A1", "\u{1F60E}", "\u{1F631}", "\u{1F44F}", "\u{1F3C6}", "\u{1F4AA}", "\u2694\uFE0F"].includes(cmd.emote)) broadcast(db, r, { type: "emote_received", senderName: s.player.name, emote: cmd.emote }, key);
+      break;
+    case "typing":
+      break;
+    // Do not write every keystroke to shared storage.
+    default:
+      fail("Thao t\xE1c kh\xF4ng \u0111\u01B0\u1EE3c h\u1ED7 tr\u1EE3.");
+  }
+  if (cmd.requestId) {
+    s.requests.push(cmd.requestId);
+    s.requests = s.requests.slice(-100);
+  }
+}
+function snapshot(db, key, cursor, now) {
+  const s = db.sessions[key];
+  if (!s) throw Error("Phi\xEAn \u0111\u1EA5u \u0111\xE3 h\u1EBFt h\u1EA1n.");
+  const room = s.roomId ? db.rooms[s.roomId] : null;
+  const { members, firstCorrectAnswers, ...state } = room || {};
+  return {
+    events: s.events.filter((e) => e.eventId > cursor),
+    cursor: s.seq,
+    playerId: s.player.id,
+    queued: !!s.queued,
+    state: room ? state : null,
+    serverNow: now,
+    players: Object.values(db.sessions).filter((v) => !v.roomId && v.player.id !== s.player.id).map((v) => ({ id: v.player.id, full_name: v.player.name, avatar_url: v.player.avatar_url }))
+  };
+}
+function installDurableDuel(app2, admin, questions) {
+  app2.post("/api/duel/sync", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (!admin) return res.status(503).json({ error: "M\xE1y ch\u1EE7 ch\u01B0a c\u1EA5u h\xECnh Supabase cho \u0111\u1EA5u 1vs1." });
+    const { sessionToken, command: cmd, cursor = 0 } = req.body || {};
+    if (typeof sessionToken !== "string" || !/^[a-f0-9]{64}$/.test(sessionToken) || !cmd || typeof cmd.type !== "string" || JSON.stringify(cmd).length > 5e3) return res.status(400).json({ error: "Y\xEAu c\u1EA7u kh\xF4ng h\u1EE3p l\u1EC7." });
+    const key = crypto.createHash("sha256").update(sessionToken).digest("hex");
+    let identity;
+    try {
+      if (cmd.type === "register_lobby") {
+        const bearer = req.headers.authorization?.replace(/^Bearer /, "");
+        if (!bearer) return res.status(401).json({ error: "B\u1EA1n c\u1EA7n \u0111\u0103ng nh\u1EADp l\u1EA1i \u0111\u1EC3 v\xE0o \u0111\u1EA5u tr\u01B0\u1EDDng." });
+        const { data, error } = await admin.auth.getUser(bearer);
+        if (error || !data.user) return res.status(401).json({ error: "Phi\xEAn \u0111\u0103ng nh\u1EADp \u0111\xE3 h\u1EBFt h\u1EA1n. H\xE3y \u0111\u0103ng nh\u1EADp l\u1EA1i." });
+        const user = data.user;
+        const { data: profile, error: profileError } = await admin.from("profiles").select("full_name,email,avatar_url").eq("id", user.id).maybeSingle();
+        if (profileError) return res.status(503).json({ error: "Kh\xF4ng t\u1EA3i \u0111\u01B0\u1EE3c h\u1ED3 s\u01A1 ng\u01B0\u1EDDi ch\u01A1i. H\xE3y th\u1EED k\u1EBFt n\u1ED1i l\u1EA1i." });
+        const metadata = user.user_metadata || {};
+        identity = {
+          id: user.id,
+          name: profile?.full_name || metadata.full_name || metadata.name || user.email?.split("@")[0] || "H\u1ECDc vi\xEAn",
+          avatar_url: profile?.avatar_url || metadata.avatar_url,
+          email: user.email || profile?.email
+        };
+      }
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const { data: row, error } = await admin.from("duel_state_store").select("version,state").eq("id", 1).single();
+        if (error) return res.status(503).json({ error: "Kho \u0111\u1EA5u 1vs1 ch\u01B0a \u0111\u01B0\u1EE3c c\xE0i \u0111\u1EB7t. H\xE3y ch\u1EA1y migration 20261015093000_durable_duel_store.sql trong Supabase." });
+        const db = row.state, now = Date.now();
+        transition(db, key, cmd, now, questions(), identity);
+        const { data: committed, error: writeError } = await admin.rpc("duel_compare_and_swap", { expected_version: row.version, next_state: db });
+        if (writeError) return res.status(503).json({ error: "Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c tr\u1EA1ng th\xE1i tr\u1EADn. H\xE3y ki\u1EC3m tra migration v\xE0 c\u1EA5u h\xECnh Supabase service role." });
+        if (committed) return res.json(snapshot(db, key, Number(cursor) || 0, now));
+        await new Promise((resolve) => setTimeout(resolve, 15 + Math.random() * 50));
+      }
+      return res.status(503).json({ error: "M\xE1y ch\u1EE7 \u0111ang b\u1EADn. Vui l\xF2ng th\u1EED l\u1EA1i." });
+    } catch (error) {
+      const message = error.message || "Kh\xF4ng x\u1EED l\xFD \u0111\u01B0\u1EE3c tr\u1EADn \u0111\u1EA5u.";
+      return res.status(/duel_state_store|duel_compare_and_swap|schema cache|does not exist/i.test(message) ? 503 : 400).json({ error: message });
+    }
+  });
+}
+
+// src/lib/kidsLearning.ts
+var KIDS_WORDS = [
+  { word: "cat", meaning: "Con m\xE8o", picture: "\u{1F431}", grades: [1, 2] },
+  { word: "dog", meaning: "Con ch\xF3", picture: "\u{1F436}", grades: [1, 2] },
+  { word: "bird", meaning: "Con chim", picture: "\u{1F426}", grades: [1, 2] },
+  { word: "fish", meaning: "Con c\xE1", picture: "\u{1F41F}", grades: [1, 2] },
+  { word: "rabbit", meaning: "Con th\u1ECF", picture: "\u{1F430}", grades: [1, 2, 3] },
+  { word: "lion", meaning: "S\u01B0 t\u1EED", picture: "\u{1F981}", grades: [2, 3, 4] },
+  { word: "elephant", meaning: "Con voi", picture: "\u{1F418}", grades: [2, 3, 4] },
+  { word: "butterfly", meaning: "Con b\u01B0\u1EDBm", picture: "\u{1F98B}", grades: [2, 3, 4] },
+  { word: "apple", meaning: "Qu\u1EA3 t\xE1o", picture: "\u{1F34E}", grades: [1, 2] },
+  { word: "banana", meaning: "Qu\u1EA3 chu\u1ED1i", picture: "\u{1F34C}", grades: [1, 2] },
+  { word: "orange", meaning: "Qu\u1EA3 cam", picture: "\u{1F34A}", grades: [1, 2, 3] },
+  { word: "carrot", meaning: "C\u1EE7 c\xE0 r\u1ED1t", picture: "\u{1F955}", grades: [1, 2, 3] },
+  { word: "cake", meaning: "B\xE1nh ng\u1ECDt", picture: "\u{1F382}", grades: [1, 2, 3] },
+  { word: "car", meaning: "\xD4 t\xF4", picture: "\u{1F697}", grades: [1, 2] },
+  { word: "bus", meaning: "Xe bu\xFDt", picture: "\u{1F68C}", grades: [1, 2, 3] },
+  { word: "bicycle", meaning: "Xe \u0111\u1EA1p", picture: "\u{1F6B2}", grades: [2, 3, 4] },
+  { word: "airplane", meaning: "M\xE1y bay", picture: "\u2708\uFE0F", grades: [2, 3, 4] },
+  { word: "school", meaning: "Tr\u01B0\u1EDDng h\u1ECDc", picture: "\u{1F3EB}", grades: [1, 2, 3] },
+  { word: "book", meaning: "Quy\u1EC3n s\xE1ch", picture: "\u{1F4D6}", grades: [1, 2, 3] },
+  { word: "pencil", meaning: "B\xFAt ch\xEC", picture: "\u270F\uFE0F", grades: [1, 2, 3] },
+  { word: "sun", meaning: "M\u1EB7t tr\u1EDDi", picture: "\u2600\uFE0F", grades: [1, 2, 3] },
+  { word: "moon", meaning: "M\u1EB7t tr\u0103ng", picture: "\u{1F319}", grades: [1, 2, 3] },
+  { word: "rainbow", meaning: "C\u1EA7u v\u1ED3ng", picture: "\u{1F308}", grades: [2, 3, 4] },
+  { word: "flower", meaning: "B\xF4ng hoa", picture: "\u{1F33B}", grades: [1, 2, 3] },
+  { word: "mountain", meaning: "N\xFAi", picture: "\u26F0\uFE0F", grades: [3, 4, 5] },
+  { word: "river", meaning: "Con s\xF4ng", picture: "\u{1F30A}", grades: [3, 4, 5] },
+  { word: "doctor", meaning: "B\xE1c s\u0129", picture: "\u{1F9D1}\u200D\u2695\uFE0F", grades: [3, 4, 5] },
+  { word: "teacher", meaning: "Gi\xE1o vi\xEAn", picture: "\u{1F9D1}\u200D\u{1F3EB}", grades: [1, 2, 3] },
+  { word: "friend", meaning: "B\u1EA1n b\xE8", picture: "\u{1F9D1}\u200D\u{1F91D}\u200D\u{1F9D1}", grades: [2, 3, 4] },
+  { word: "happy", meaning: "Vui v\u1EBB", picture: "\u{1F60A}", grades: [3, 4, 5] },
+  { word: "strong", meaning: "M\u1EA1nh m\u1EBD", picture: "\u{1F4AA}", grades: [4, 5, 6] },
+  { word: "planet", meaning: "H\xE0nh tinh", picture: "\u{1FA90}", grades: [4, 5, 6] },
+  { word: "rocket", meaning: "T\xEAn l\u1EEDa", picture: "\u{1F680}", grades: [4, 5, 6] },
+  { word: "computer", meaning: "M\xE1y t\xEDnh", picture: "\u{1F4BB}", grades: [4, 5, 6] },
+  { word: "library", meaning: "Th\u01B0 vi\u1EC7n", picture: "\u{1F4DA}", grades: [4, 5, 6] },
+  { word: "future", meaning: "T\u01B0\u01A1ng lai", picture: "\u{1F52E}", grades: [5, 6] },
+  { word: "adventure", meaning: "Cu\u1ED9c phi\xEAu l\u01B0u", picture: "\u{1F5FA}\uFE0F", grades: [5, 6] }
 ];
 
 // server.ts
 dotenv.config();
 var app = express();
 var httpServer = http.createServer(app);
-var PORT = 3e3;
+var PORT = Number(process.env.PORT) || 3e3;
 app.use(express.json());
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -1045,7 +1715,7 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
     return res.sendStatus(200);
   }
-  if (!req.url.startsWith("/api") && !req.url.startsWith("/index.html") && req.url !== "/") {
+  if (process.env.VERCEL && !req.url.startsWith("/api") && !req.url.startsWith("/index.html") && req.url !== "/") {
     req.url = "/api" + (req.url.startsWith("/") ? "" : "/") + req.url;
   }
   next();
@@ -1064,8 +1734,9 @@ var hasSupabaseAdmin = !!(supabaseUrl && supabaseServiceKey);
 var supabaseAdmin = hasSupabaseAdmin ? createClient(supabaseUrl, supabaseServiceKey, {
   auth: { autoRefreshToken: false, persistSession: false }
 }) : null;
-var memoryQuestionsStore = INITIAL_QUESTIONS.map((q, i) => ({
-  id: i + 1,
+installDurableDuel(app, supabaseAdmin, () => memoryQuestionsStore);
+var memoryQuestionsStore = [...INITIAL_QUESTIONS, ...SPECIALIZED_QUESTIONS].map((q, i) => ({
+  id: q.id || i + 1,
   vi: q.vi,
   hints: q.hints,
   answers: q.answers,
@@ -1111,10 +1782,10 @@ try {
 }
 function getDailyRotatedQuestions(allQuestions, dateStr) {
   if (!allQuestions || allQuestions.length === 0) return [];
-  const today = dateStr || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+  const today2 = dateStr || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
   let seed = 0;
-  for (let i = 0; i < today.length; i++) {
-    seed = (seed << 5) - seed + today.charCodeAt(i);
+  for (let i = 0; i < today2.length; i++) {
+    seed = (seed << 5) - seed + today2.charCodeAt(i);
     seed |= 0;
   }
   seed = Math.abs(seed) || 12345;
@@ -1124,8 +1795,8 @@ function getDailyRotatedQuestions(allQuestions, dateStr) {
     t ^= t + Math.imul(t ^ t >>> 7, t | 61);
     return ((t ^ t >>> 14) >>> 0) / 4294967296;
   };
-  const todayQuestions = allQuestions.filter((q) => q.created_date === today);
-  const otherQuestions = allQuestions.filter((q) => q.created_date !== today);
+  const todayQuestions = allQuestions.filter((q) => q.created_date === today2);
+  const otherQuestions = allQuestions.filter((q) => q.created_date !== today2);
   const shuffledToday = [...todayQuestions];
   for (let i = shuffledToday.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1));
@@ -1144,6 +1815,214 @@ app.get(["/api/health", "/health"], (req, res) => {
     hasGeminiKey: !!process.env.GEMINI_API_KEY,
     hasSupabaseAdmin
   });
+});
+var KIDS_WORD_TOPICS = {
+  animals: "\u0111\u1ED9ng v\u1EADt quen thu\u1ED9c",
+  food: "\u0111\u1ED3 \u0103n, th\u1EE9c u\u1ED1ng v\xE0 nguy\xEAn li\u1EC7u quen thu\u1ED9c",
+  school: "tr\u01B0\u1EDDng h\u1ECDc v\xE0 \u0111\u1ED3 d\xF9ng h\u1ECDc t\u1EADp",
+  home: "nh\xE0 c\u1EEDa v\xE0 \u0111\u1ED3 v\u1EADt trong gia \u0111\xECnh",
+  nature: "thi\xEAn nhi\xEAn v\xE0 th\u1EDDi ti\u1EBFt",
+  transport: "ph\u01B0\u01A1ng ti\u1EC7n giao th\xF4ng",
+  sports: "th\u1EC3 thao v\xE0 ho\u1EA1t \u0111\u1ED9ng vui ch\u01A1i",
+  body: "c\u01A1 th\u1EC3 v\xE0 s\u1EE9c kh\u1ECFe c\u01A1 b\u1EA3n",
+  clothes: "qu\u1EA7n \xE1o v\xE0 v\u1EADt d\u1EE5ng c\xE1 nh\xE2n",
+  colors: "m\xE0u s\u1EAFc, h\xECnh d\u1EA1ng v\xE0 k\xEDch th\u01B0\u1EDBc",
+  daily: "\u0111\u1ED9ng t\u1EEB v\xE0 ho\u1EA1t \u0111\u1ED9ng h\u1EB1ng ng\xE0y",
+  science: "khoa h\u1ECDc v\xE0 v\u0169 tr\u1EE5 \u1EDF m\u1EE9c thi\u1EBFu nhi"
+};
+function kidsWordKey(word) {
+  return word.trim().toLowerCase().replace(/\s+/g, " ");
+}
+function sanitizeKidsWord(value, grades) {
+  if (!value || typeof value !== "object") return null;
+  if (!Array.isArray(grades)) return null;
+  const word = typeof value.word === "string" ? value.word.trim().replace(/\s+/g, " ").toLowerCase() : "";
+  const meaning = typeof value.meaning === "string" ? value.meaning.trim() : "";
+  const picture = typeof value.picture === "string" ? value.picture.trim() : "";
+  if (!/^[a-z]+(?:[ '-][a-z]+){0,3}$/.test(word) || word.length > 48) return null;
+  if (!meaning || meaning.length > 120 || !picture || Array.from(picture).length > 12) return null;
+  if (!/[\p{Extended_Pictographic}]/u.test(picture)) return null;
+  const validGrades = Array.from(new Set(grades.map(Number).filter((grade) => Number.isInteger(grade) && grade >= 1 && grade <= 6)));
+  if (!validGrades.length) return null;
+  return { word, word_key: kidsWordKey(word), meaning, picture, grades: validGrades };
+}
+async function authorizeKidsWordAdmin(req, res) {
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: "M\xE1y ch\u1EE7 ch\u01B0a c\u1EA5u h\xECnh Supabase service role." });
+    return null;
+  }
+  const match = typeof req.headers.authorization === "string" ? req.headers.authorization.match(/^Bearer\s+(.+)$/i) : null;
+  const accessToken = match?.[1]?.trim();
+  if (!accessToken) {
+    res.status(401).json({ error: "Vui l\xF2ng \u0111\u0103ng nh\u1EADp t\xE0i kho\u1EA3n qu\u1EA3n tr\u1ECB vi\xEAn." });
+    return null;
+  }
+  const { data: authData, error: authError } = await supabaseAdmin.auth.getUser(accessToken);
+  if (authError || !authData.user) {
+    res.status(401).json({ error: "Phi\xEAn \u0111\u0103ng nh\u1EADp kh\xF4ng h\u1EE3p l\u1EC7 ho\u1EB7c \u0111\xE3 h\u1EBFt h\u1EA1n." });
+    return null;
+  }
+  const { data: profile, error: profileError } = await supabaseAdmin.from("profiles").select("role").eq("id", authData.user.id).maybeSingle();
+  if (profileError) {
+    res.status(503).json({ error: "Kh\xF4ng x\xE1c minh \u0111\u01B0\u1EE3c quy\u1EC1n qu\u1EA3n tr\u1ECB. Vui l\xF2ng th\u1EED l\u1EA1i." });
+    return null;
+  }
+  if (profile?.role !== "admin") {
+    res.status(403).json({ error: "Ch\u1EC9 t\xE0i kho\u1EA3n qu\u1EA3n tr\u1ECB vi\xEAn m\u1EDBi \u0111\u01B0\u1EE3c qu\u1EA3n l\xFD t\u1EEB tr\u1EBB em." });
+    return null;
+  }
+  return authData.user;
+}
+async function loadKidsWordKeys() {
+  if (!supabaseAdmin) throw new Error("M\xE1y ch\u1EE7 ch\u01B0a c\u1EA5u h\xECnh Supabase service role.");
+  const keys = new Set(KIDS_WORDS.map((word) => kidsWordKey(word.word)));
+  for (let offset = 0; ; offset += 1e3) {
+    const { data, error } = await supabaseAdmin.from("kids_words").select("word_key").order("word_key", { ascending: true }).range(offset, offset + 999);
+    if (error) throw error;
+    (data || []).forEach((row) => keys.add(row.word_key));
+    if (!data || data.length < 1e3) break;
+  }
+  return keys;
+}
+app.get(["/api/kids/words", "/kids/words"], async (_req, res) => {
+  if (!supabaseAdmin) return res.json({ success: true, data: [] });
+  const words = [];
+  try {
+    for (let offset = 0; ; offset += 1e3) {
+      const { data, error } = await supabaseAdmin.from("kids_words").select("word, meaning, picture, grades").eq("is_active", true).order("word", { ascending: true }).range(offset, offset + 999);
+      if (error) {
+        console.warn("[Kids words] Could not load published words:", error.message);
+        return res.status(503).json({ error: "Ch\u01B0a t\u1EA3i \u0111\u01B0\u1EE3c kho t\u1EEB tr\u1EBB em. H\xE3y ki\u1EC3m tra migration Supabase." });
+      }
+      words.push(...data || []);
+      if (!data || data.length < 1e3) break;
+    }
+  } catch (error) {
+    console.warn("[Kids words] Could not load published words:", error.message);
+    return res.status(503).json({ error: "Ch\u01B0a t\u1EA3i \u0111\u01B0\u1EE3c kho t\u1EEB tr\u1EBB em. H\xE3y th\u1EED l\u1EA1i sau." });
+  }
+  return res.json({ success: true, data: words });
+});
+app.post(["/api/admin/kids-words/generate", "/admin/kids-words/generate"], async (req, res) => {
+  try {
+    const admin = await authorizeKidsWordAdmin(req, res);
+    if (!admin) return;
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(503).json({ error: "M\xE1y ch\u1EE7 ch\u01B0a c\u1EA5u h\xECnh GEMINI_API_KEY." });
+    }
+    const grade = Number(req.body?.grade);
+    const count = Number(req.body?.count);
+    const topic = typeof req.body?.topic === "string" ? req.body.topic : "";
+    if (!Number.isInteger(grade) || grade < 1 || grade > 6) {
+      return res.status(400).json({ error: "L\u1EDBp h\u1ECDc ph\u1EA3i t\u1EEB l\u1EDBp 1 \u0111\u1EBFn l\u1EDBp 6." });
+    }
+    if (!Number.isInteger(count) || count < 1 || count > 20) {
+      return res.status(400).json({ error: "M\u1ED7i l\u1EA7n ch\u1EC9 t\u1EA1o t\u1EEB 1 \u0111\u1EBFn 20 t\u1EEB." });
+    }
+    if (!KIDS_WORD_TOPICS[topic]) {
+      return res.status(400).json({ error: "Ch\u1EE7 \u0111\u1EC1 t\u1EEB v\u1EF1ng kh\xF4ng h\u1EE3p l\u1EC7." });
+    }
+    let existingKeys;
+    try {
+      existingKeys = await loadKidsWordKeys();
+    } catch (error) {
+      console.warn("[Kids words] Could not check duplicates:", error.message);
+      return res.status(503).json({ error: "Ch\u01B0a c\xF3 b\u1EA3ng kids_words. H\xE3y ch\u1EA1y migration Supabase tr\u01B0\u1EDBc khi t\u1EA1o t\u1EEB." });
+    }
+    const prompt = `B\u1EA1n l\xE0 gi\xE1o vi\xEAn ti\u1EBFng Anh ti\u1EC3u h\u1ECDc Vi\u1EC7t Nam, chuy\xEAn so\u1EA1n t\u1EEB v\u1EF1ng ch\xEDnh x\xE1c cho h\u1ECDc sinh l\u1EDBp ${grade}.
+H\xE3y t\u1EA1o \u0111\xFAng ${count} m\u1EE5c t\u1EEB thu\u1ED9c ch\u1EE7 \u0111\u1EC1 ${KIDS_WORD_TOPICS[topic]}.
+M\u1ED7i m\u1EE5c ch\u1EC9 l\xE0 m\u1ED9t t\u1EEB ti\u1EBFng Anh ph\u1ED5 bi\u1EBFn ho\u1EB7c c\u1EE5m t\u1EEB ng\u1EAFn t\u1ED1i \u0111a 4 t\u1EEB, kh\xF4ng ph\u1EA3i c\xE2u, kh\xF4ng d\xF9ng t\u1EEB hi\u1EBFm, t\xEAn ri\xEAng, t\u1EEB g\xE2y s\u1EE3 h\xE3i ho\u1EB7c n\u1ED9i dung ng\u01B0\u1EDDi l\u1EDBn. \u01AFu ti\xEAn v\u1EADt/con v\u1EADt/\u0111\u1ED3 \u0103n/ho\u1EA1t \u0111\u1ED9ng c\u1EE5 th\u1EC3, ph\xF9 h\u1EE3p tu\u1ED5i v\xE0 c\xF3 th\u1EC3 minh h\u1ECDa r\xF5 b\u1EB1ng m\u1ED9t emoji.
+V\u1EDBi m\u1ED7i m\u1EE5c: word l\xE0 t\u1EEB ti\u1EBFng Anh vi\u1EBFt th\u01B0\u1EDDng; meaning l\xE0 ngh\u0129a ti\u1EBFng Vi\u1EC7t ng\u1EAFn, \u0111\xFAng v\xE0 t\u1EF1 nhi\xEAn; picture l\xE0 \u0111\xFAng m\u1ED9t emoji minh h\u1ECDa tr\u1EF1c ti\u1EBFp, kh\xF4ng d\xF9ng \u0111\u01B0\u1EDDng d\u1EABn \u1EA3nh. Tr\xE1nh c\xE1c t\u1EEB \u0111\u1ED3ng ngh\u0129a tr\xF9ng nhau v\xE0 kh\xF4ng t\u1EA1o s\u1ED1 nhi\u1EC1u n\u1EBFu d\u1EA1ng s\u1ED1 \xEDt l\xE0 m\u1EE5c t\u1EEB chu\u1EA9n. Kh\xF4ng th\xEAm gi\u1EA3i th\xEDch ngo\xE0i JSON.`;
+    const models = ["gemini-3.1-flash-lite", "gemini-flash-latest", "gemini-3.1-pro-preview"];
+    let candidates = [];
+    let successfulModel = "";
+    let lastError = null;
+    for (const model of models) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            temperature: 0.35,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  word: { type: Type.STRING },
+                  meaning: { type: Type.STRING },
+                  picture: { type: Type.STRING }
+                },
+                required: ["word", "meaning", "picture"]
+              }
+            }
+          }
+        });
+        const parsed = JSON.parse(response.text || "[]");
+        if (!Array.isArray(parsed)) throw new Error("AI tr\u1EA3 v\u1EC1 d\u1EEF li\u1EC7u kh\xF4ng \u0111\xFAng \u0111\u1ECBnh d\u1EA1ng.");
+        const seen = /* @__PURE__ */ new Set();
+        candidates = parsed.map((value) => sanitizeKidsWord(value, [grade])).filter((value) => {
+          if (!value || existingKeys.has(value.word_key) || seen.has(value.word_key)) return false;
+          seen.add(value.word_key);
+          return true;
+        }).slice(0, count);
+        successfulModel = model;
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!successfulModel) {
+      console.error("[Kids words] AI generation failed:", lastError?.message);
+      return res.status(502).json({ error: "AI ch\u01B0a t\u1EA1o \u0111\u01B0\u1EE3c danh s\xE1ch h\u1EE3p l\u1EC7. Vui l\xF2ng th\u1EED l\u1EA1i." });
+    }
+    return res.json({
+      success: true,
+      modelUsed: successfulModel,
+      requestedCount: count,
+      duplicateCount: Math.max(0, count - candidates.length),
+      data: candidates.map(({ word, meaning, picture }) => ({ word, meaning, picture, grades: [grade] }))
+    });
+  } catch (error) {
+    console.error("[Kids words] Generation route failed:", error);
+    return res.status(500).json({ error: error.message || "L\u1ED7i khi t\u1EA1o t\u1EEB v\u1EF1ng." });
+  }
+});
+app.post(["/api/admin/kids-words", "/admin/kids-words"], async (req, res) => {
+  try {
+    const admin = await authorizeKidsWordAdmin(req, res);
+    if (!admin) return;
+    if (!Array.isArray(req.body?.words) || req.body.words.length < 1 || req.body.words.length > 50) {
+      return res.status(400).json({ error: "H\xE3y ch\u1ECDn t\u1EEB \u0111\u1EC3 l\u01B0u (t\u1ED1i \u0111a 50 t\u1EEB m\u1ED7i l\u1EA7n)." });
+    }
+    const words = req.body.words.map((value) => sanitizeKidsWord(value, value?.grades || [])).filter((value) => value);
+    if (!words.length || words.length !== req.body.words.length) {
+      return res.status(400).json({ error: "M\u1ED9t s\u1ED1 m\u1EE5c t\u1EEB thi\u1EBFu t\u1EEB ti\u1EBFng Anh, ngh\u0129a, emoji ho\u1EB7c l\u1EDBp h\u1EE3p l\u1EC7." });
+    }
+    let existingKeys;
+    try {
+      existingKeys = await loadKidsWordKeys();
+    } catch (error2) {
+      console.warn("[Kids words] Could not check duplicates before save:", error2.message);
+      return res.status(503).json({ error: "Ch\u01B0a c\xF3 b\u1EA3ng kids_words. H\xE3y ch\u1EA1y migration Supabase tr\u01B0\u1EDBc khi l\u01B0u t\u1EEB." });
+    }
+    const uniqueWords = words.filter((word) => !existingKeys.has(word.word_key));
+    if (!uniqueWords.length) {
+      return res.json({ success: true, savedCount: 0, duplicateCount: words.length });
+    }
+    const rows = uniqueWords.map((word) => ({ ...word, created_by: admin.id, is_active: true }));
+    const { data, error } = await supabaseAdmin.from("kids_words").upsert(rows, { onConflict: "word_key", ignoreDuplicates: true }).select("word, meaning, picture, grades");
+    if (error) {
+      console.error("[Kids words] Could not save words:", error.message);
+      return res.status(503).json({ error: "Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c t\u1EEB. H\xE3y ki\u1EC3m tra migration Supabase v\xE0 th\u1EED l\u1EA1i." });
+    }
+    const savedCount = data?.length || 0;
+    return res.json({ success: true, savedCount, duplicateCount: words.length - savedCount, data: data || [] });
+  } catch (error) {
+    console.error("[Kids words] Save route failed:", error);
+    return res.status(500).json({ error: error.message || "L\u1ED7i khi l\u01B0u t\u1EEB v\u1EF1ng." });
+  }
 });
 app.all(["/api/cron/generate", "/cron/generate"], async (req, res) => {
   try {
@@ -1211,6 +2090,11 @@ app.all(["/api/cron/generate", "/cron/generate"], async (req, res) => {
     if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({
         error: "Ch\u01B0a c\u1EA5u h\xECnh GEMINI_API_KEY trong h\u1EC7 th\u1ED1ng."
+      });
+    }
+    if (!supabaseAdmin) {
+      return res.status(503).json({
+        error: "Ch\u01B0a c\u1EA5u h\xECnh Supabase Service Role Key. C\xE2u h\u1ECFi kh\xF4ng th\u1EC3 \u0111\u01B0\u1EE3c l\u01B0u b\u1EC1n v\u1EEFng."
       });
     }
     const requestedCategory = (req.query.category || req.body?.category)?.toLowerCase() || "general";
@@ -1282,10 +2166,10 @@ M\u1ED7i c\xE2u b\xE0i t\u1EADp g\u1ED3m:
     if (questionsData.length === 0) {
       console.log("[AI Fallback] K\xEDch ho\u1EA1t ng\xE2n h\xE0ng c\xE2u h\u1ECFi giao ti\u1EBFp chu\u1EA9n.");
       isCuratedFallback = true;
-      const matchingPool = INITIAL_QUESTIONS.filter(
+      const matchingPool = [...INITIAL_QUESTIONS, ...SPECIALIZED_QUESTIONS].filter(
         (q) => (q.category || "general") === requestedCategory
       );
-      const poolToUse = matchingPool.length > 0 ? matchingPool : INITIAL_QUESTIONS;
+      const poolToUse = matchingPool.length > 0 ? matchingPool : [...INITIAL_QUESTIONS, ...SPECIALIZED_QUESTIONS];
       const shuffled = [...poolToUse].sort(() => Math.random() - 0.5);
       questionsData = shuffled.slice(0, 10).map((item) => ({
         vi: item.vi,
@@ -1294,57 +2178,47 @@ M\u1ED7i c\xE2u b\xE0i t\u1EADp g\u1ED3m:
         category: requestedCategory
       }));
     }
-    const today = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+    const today2 = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
     const records = questionsData.map((q) => ({
       vi: q.vi,
       hints: q.hints,
       answers: Array.isArray(q.answers) ? q.answers : [q.answers],
-      created_date: today,
+      created_date: today2,
       category: requestedCategory
     }));
-    const newWithLocalIds = records.map((r, idx) => ({
-      id: Date.now() + idx,
-      ...r
-    }));
-    memoryQuestionsStore = [...newWithLocalIds, ...memoryQuestionsStore];
     let insertedData = null;
-    let supabaseSaveSuccess = false;
-    let supabaseWarning = null;
-    let fixSql = null;
-    if (supabaseAdmin) {
-      try {
-        const { data, error } = await supabaseAdmin.from("questions").insert(records).select();
-        if (error) {
-          console.warn("L\u01B0u v\xE0o Supabase th\u1EA5t b\u1EA1i:", error.message);
-          const isTableMissing = error.message?.includes("schema cache") || error.message?.includes("does not exist") || error.code === "PGRST204";
-          const isPermissionDenied = error.message?.includes("permission denied") || error.code === "42501";
-          if (isTableMissing) {
-            supabaseWarning = "table_missing";
-          } else if (isPermissionDenied) {
-            supabaseWarning = "permission_denied";
-            fixSql = "GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;\nGRANT ALL ON ALL TABLES IN SCHEMA public TO postgres, anon, authenticated, service_role;\nGRANT ALL ON ALL SEQUENCES IN SCHEMA public TO postgres, anon, authenticated, service_role;";
-          } else {
-            supabaseWarning = error.message;
-          }
-        } else if (data) {
-          supabaseSaveSuccess = true;
-          insertedData = data;
-        }
-      } catch (dbEx) {
-        console.warn("Ngo\u1EA1i l\u1EC7 khi g\u1ECDi Supabase:", dbEx.message);
-        supabaseWarning = dbEx.message;
+    try {
+      const { data, error } = await supabaseAdmin.from("questions").insert(records).select();
+      if (error) {
+        console.warn("L\u01B0u v\xE0o Supabase th\u1EA5t b\u1EA1i:", error.message);
+        const isMissingCategory = error.message?.includes("category") && (error.message?.includes("schema cache") || error.message?.includes("does not exist") || error.code === "PGRST204");
+        return res.status(503).json({
+          error: isMissingCategory ? "C\u01A1 s\u1EDF d\u1EEF li\u1EC7u ch\u01B0a c\xF3 c\u1ED9t category. H\xE3y ch\u1EA1y migration adult_question_categories tr\xEAn Supabase." : "Kh\xF4ng l\u01B0u \u0111\u01B0\u1EE3c c\xE2u h\u1ECFi v\xE0o Supabase. C\xE2u m\u1EDBi ch\u01B0a \u0111\u01B0\u1EE3c th\xEAm v\xE0o ng\xE2n h\xE0ng.",
+          supabaseWarning: error.message
+        });
       }
+      if (!data || data.length !== records.length) {
+        return res.status(503).json({
+          error: "Supabase ch\u01B0a x\xE1c nh\u1EADn l\u01B0u \u0111\u1EE7 c\xE2u h\u1ECFi. Vui l\xF2ng th\u1EED l\u1EA1i."
+        });
+      }
+      insertedData = data;
+    } catch (dbEx) {
+      console.warn("Ngo\u1EA1i l\u1EC7 khi g\u1ECDi Supabase:", dbEx.message);
+      return res.status(503).json({
+        error: "Kh\xF4ng k\u1EBFt n\u1ED1i \u0111\u01B0\u1EE3c Supabase. C\xE2u m\u1EDBi ch\u01B0a \u0111\u01B0\u1EE3c th\xEAm v\xE0o ng\xE2n h\xE0ng.",
+        supabaseWarning: dbEx.message
+      });
     }
+    memoryQuestionsStore = [...insertedData, ...memoryQuestionsStore];
     return res.json({
       success: true,
       message: isCuratedFallback ? `\u0110\xE3 n\u1EA1p ${records.length} c\xE2u h\u1ECFi giao ti\u1EBFp chu\u1EA9n ch\u1ECDn l\u1ECDc.` : `\u0110\xE3 sinh th\xE0nh c\xF4ng ${records.length} c\xE2u h\u1ECFi m\u1EDBi b\u1EB1ng Gemini AI (${successfulModel})!`,
       count: records.length,
       modelUsed: successfulModel || "curated_database",
       isCuratedFallback,
-      insertedToSupabase: supabaseSaveSuccess,
-      supabaseWarning,
-      fixSql,
-      data: insertedData || newWithLocalIds
+      insertedToSupabase: true,
+      data: insertedData
     });
   } catch (err) {
     console.error("L\u1ED7i khi sinh c\xE2u h\u1ECFi:", err);
@@ -1370,7 +2244,7 @@ app.get(["/api/questions", "/questions"], async (req, res) => {
     console.warn("L\u1ED7i \u0111\u1ECDc c\xE2u h\u1ECFi t\u1EEB Supabase, chuy\u1EC3n sang b\u1ED9 nh\u1EDB \u0111\u1EC7m:", err.message);
   }
   const existingIds = new Set(rawQuestions.map((q) => q.id));
-  const missingQuestions = INITIAL_QUESTIONS.filter((q) => !existingIds.has(q.id));
+  const missingQuestions = [...INITIAL_QUESTIONS, ...SPECIALIZED_QUESTIONS].filter((q) => !existingIds.has(q.id));
   if (missingQuestions.length > 0) {
     rawQuestions = [...rawQuestions, ...missingQuestions];
   }
@@ -1631,7 +2505,7 @@ app.post(["/api/auth/send-otp", "/auth/send-otp"], async (req, res) => {
     if (!cleanEmail || !cleanEmail.includes("@")) {
       return res.status(400).json({ success: false, error: "\u0110\u1ECBa ch\u1EC9 email kh\xF4ng h\u1EE3p l\u1EC7." });
     }
-    const otpNumber = 1e5 + crypto.randomInt(0, 9e5);
+    const otpNumber = 1e5 + crypto2.randomInt(0, 9e5);
     const otp = otpNumber.toString();
     otpMemoryStore.set(cleanEmail, {
       otp,
@@ -1823,7 +2697,7 @@ function generateDuelRoomId() {
   } while (duelRooms.has(id));
   return id;
 }
-function pickDuelQuestions(count, category = "all") {
+function pickDuelQuestions(count, category = "all", level = "all", mode = "sentence") {
   let pool = [...memoryQuestionsStore];
   if (category && category !== "all" && category !== "general") {
     const filtered = pool.filter((q) => q.category === category);
@@ -1831,11 +2705,20 @@ function pickDuelQuestions(count, category = "all") {
       pool = filtered;
     }
   }
+  if (level && level !== "all") {
+    const levelPool = pool.filter((q) => (q.level || "B1") === level);
+    if (levelPool.length >= count) pool = levelPool;
+  }
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  return pool.slice(0, Math.min(count, pool.length));
+  return pool.slice(0, Math.min(count, pool.length)).map((q) => {
+    if (mode !== "word") return q;
+    const source = String(q.vi || "").replace(/[.,!?;:()]/g, "").split(/\s+/).find(Boolean) || q.vi;
+    const target = String(q.answers?.[0] || "").replace(/[.,!?;:()]/g, "").split(/\s+/).find(Boolean) || "";
+    return { ...q, vi: source, hints: `T\u1EEB tr\u1ECDng t\xE2m: ${target}`, answers: [target], wordBank: [target] };
+  });
 }
 function serializeRoomState(room) {
   const playersObj = {};
@@ -1863,6 +2746,8 @@ function serializeRoomState(room) {
     roomId: room.roomId,
     status: room.status,
     category: room.category,
+    level: room.level || "all",
+    mode: room.mode || "sentence",
     questionCount: room.questionCount,
     players: playersObj,
     questions: room.questions.map((q) => ({
@@ -1929,7 +2814,7 @@ wss.on("connection", (ws) => {
       const data = JSON.parse(messageRaw.toString());
       const { type } = data;
       if (type === "join_room") {
-        const { roomId: rawRoomId, player, questionCount = 5, category = "all" } = data;
+        const { roomId: rawRoomId, player, questionCount = 5, category = "all", level = "all", mode = "sentence" } = data;
         const pId = player?.id || `player-${Date.now()}`;
         const pName = player?.name || "Chi\u1EBFn binh";
         const pAvatar = player?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${pId}`;
@@ -1942,6 +2827,8 @@ wss.on("connection", (ws) => {
               roomId: targetRoomId,
               status: "waiting",
               category: category || "all",
+              level: level || "all",
+              mode: mode === "word" ? "word" : "sentence",
               questionCount: questionCount || 5,
               players: /* @__PURE__ */ new Map(),
               questions: [],
@@ -1958,6 +2845,8 @@ wss.on("connection", (ws) => {
             roomId: targetRoomId,
             status: "waiting",
             category: category || "all",
+            level: level || "all",
+            mode: mode === "word" ? "word" : "sentence",
             questionCount: questionCount || 5,
             players: /* @__PURE__ */ new Map(),
             questions: [],
@@ -2011,19 +2900,21 @@ wss.on("connection", (ws) => {
           ws
         );
       } else if (type === "find_match") {
-        const { player, category = "all", questionCount = 5 } = data;
+        const { player, category = "all", questionCount = 5, level = "all", mode = "sentence" } = data;
         const pId = player?.id || `player-${Date.now()}`;
         const pName = player?.name || "Chi\u1EBFn binh";
         const pAvatar = player?.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${pId}`;
-        if (quickMatchWaitingQueue && quickMatchWaitingQueue.ws.readyState === WebSocket.OPEN && quickMatchWaitingQueue.player.id !== pId) {
+        if (quickMatchWaitingQueue && quickMatchWaitingQueue.ws.readyState === WebSocket.OPEN && quickMatchWaitingQueue.player.id !== pId && quickMatchWaitingQueue.category === category && quickMatchWaitingQueue.level === level && quickMatchWaitingQueue.mode === (mode === "word" ? "word" : "sentence")) {
           const waitingItem = quickMatchWaitingQueue;
           quickMatchWaitingQueue = null;
           const newRoomId = generateDuelRoomId();
-          const matchQuestions = pickDuelQuestions(questionCount, category);
+          const matchQuestions = pickDuelQuestions(questionCount, category, level, mode === "word" ? "word" : "sentence");
           const room = {
             roomId: newRoomId,
             status: "in_progress",
             category,
+            level,
+            mode: mode === "word" ? "word" : "sentence",
             questionCount,
             players: /* @__PURE__ */ new Map(),
             questions: matchQuestions,
@@ -2074,7 +2965,9 @@ wss.on("connection", (ws) => {
             ws,
             player: { id: pId, name: pName, avatar_url: pAvatar },
             category,
-            questionCount
+            questionCount,
+            level,
+            mode: mode === "word" ? "word" : "sentence"
           };
           currentPlayerId = pId;
           ws.send(JSON.stringify({ type: "waiting_in_queue", message: "\u0110ang t\xECm ki\u1EBFm \u0111\u1ED1i th\u1EE7 tr\u1EF1c tuy\u1EBFn..." }));
@@ -2101,6 +2994,8 @@ wss.on("connection", (ws) => {
         if (!host || !host.isHost) return;
         if (data.questionCount) room.questionCount = data.questionCount;
         if (data.category) room.category = data.category;
+        if (typeof data.level === "string") room.level = data.level;
+        if (data.mode === "word" || data.mode === "sentence") room.mode = data.mode;
         broadcastRoomState(room);
       } else if (type === "start_game") {
         if (!currentRoomId || !currentPlayerId) return;
@@ -2111,7 +3006,7 @@ wss.on("connection", (ws) => {
           ws.send(JSON.stringify({ type: "error", message: "Ch\u1EC9 ch\u1EE7 ph\xF2ng m\u1EDBi c\xF3 th\u1EC3 b\u1EAFt \u0111\u1EA7u tr\u1EADn \u0111\u1EA5u!" }));
           return;
         }
-        room.questions = pickDuelQuestions(room.questionCount, room.category);
+        room.questions = pickDuelQuestions(room.questionCount, room.category, room.level, room.mode);
         room.status = "countdown";
         room.currentRound = 0;
         room.firstCorrectAnswers.clear();
@@ -2302,7 +3197,7 @@ wss.on("connection", (ws) => {
           }
         }
         if (allAgreed) {
-          room.questions = pickDuelQuestions(room.questionCount, room.category);
+          room.questions = pickDuelQuestions(room.questionCount, room.category, room.level, room.mode);
           room.status = "countdown";
           room.firstCorrectAnswers.clear();
           room.rematchVotes.clear();
@@ -2389,7 +3284,7 @@ wss.on("connection", (ws) => {
     }
   });
 });
-async function start() {
+async function start2() {
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -2409,7 +3304,7 @@ async function start() {
   });
 }
 if (!process.env.VERCEL) {
-  start();
+  start2();
 }
 var server_default = app;
 export {

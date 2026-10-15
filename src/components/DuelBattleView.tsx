@@ -186,6 +186,7 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   const [connectionStatus, setConnectionStatus] = useState<
     'connecting' | 'connected' | 'disconnected' | 'error'
   >('connecting');
+  const [connectionError, setConnectionError] = useState<string | null>(null);
   const connectionStatusRef = useRef(connectionStatus);
   const updateConnectionStatus = (status: typeof connectionStatus) => {
     connectionStatusRef.current = status;
@@ -253,16 +254,31 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
       const wsUrl = (import.meta as any).env.VITE_DUEL_WS_URL || `${protocol}//${window.location.host}/ws/duel`;
       const connection: any = (import.meta as any).env.VITE_DUEL_WS_URL ? new WebSocket(wsUrl) : new HttpDuelConnection(playerId);
       connection.onopen = () => {
-        updateConnectionStatus('connected');
+        if (connection instanceof WebSocket) {
+          setConnectionError(null);
+          updateConnectionStatus('connected');
+        } else {
+          updateConnectionStatus('connecting');
+        }
         connection.send(JSON.stringify({ type: 'register_lobby', player: { id: playerId, name: playerName, avatar_url: playerAvatar, email: profile?.email } }));
         if (initialRoomId) connection.send(JSON.stringify({ type: 'join_room', roomId: initialRoomId.toUpperCase().trim(), player: { id: playerId, name: playerName, avatar_url: playerAvatar } }));
       };
       connection.onmessage = (event: any) => { try { messageRef.current(JSON.parse(event.data)); } catch {} };
-      connection.onrecovered = () => { if (wsRef.current === connection) updateConnectionStatus('connected'); };
+      connection.onrecovered = () => {
+        if (wsRef.current === connection) {
+          setConnectionError(null);
+          updateConnectionStatus('connected');
+        }
+      };
       connection.onclose = () => {
         if (wsRef.current === connection && connectionStatusRef.current !== 'error') updateConnectionStatus('disconnected');
       };
-      connection.onerror = () => { if (wsRef.current === connection) updateConnectionStatus('error'); };
+      connection.onerror = () => {
+        if (wsRef.current === connection) {
+          setConnectionError((previous) => previous || 'Không kết nối được máy chủ đấu trường.');
+          updateConnectionStatus('error');
+        }
+      };
       wsRef.current = connection;
     } catch { updateConnectionStatus('error'); }
   }, [initialRoomId, playerId, playerName, playerAvatar, profile?.email]);
@@ -272,6 +288,8 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
     const { type } = data;
 
     if (type === 'lobby_state') {
+      setConnectionError(null);
+      updateConnectionStatus('connected');
       setOnlinePlayers(data.players || []);
       setInvitations(data.invitations || []);
     } else if (type === 'duel_invitation') {
@@ -412,8 +430,12 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
     } else if (type === 'rematch_requested_by_player') {
       playCriticalSound();
       setFloatingAlert('🔥 Đối thủ vừa gửi lời mời TÁI ĐẤU! Bấm Tái Đấu để chấp nhận!');
+    } else if (type === 'connection_restored') {
+      setConnectionError(null);
+      updateConnectionStatus('connected');
     } else if (type === 'error') {
       setIsSubmitting(false);
+      if (data.connectionFailure) setConnectionError(data.message || 'Không kết nối được máy chủ đấu trường.');
       setFloatingAlert(`⚠️ ${data.message || 'Có lỗi xảy ra!'}`);
       setTimeout(() => setFloatingAlert(null), 4000);
     }
@@ -713,7 +735,10 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
 
   const connectionNotice = connectionStatus !== 'connected' ? (
     <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-100 p-3 text-sm text-amber-950">
-      <span>{connectionStatus === 'connecting' ? 'Đang kết nối...' : connectionStatus === 'error' ? 'Chưa kết nối được. Trạng thái trận vẫn được giữ để đồng bộ lại.' : 'Kết nối gián đoạn. Đang tự thử lại; hãy giữ trang mở để khôi phục trận.'}</span>
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">{connectionStatus === 'connecting' ? 'Đang kết nối...' : connectionError || (connectionStatus === 'error' ? 'Chưa kết nối được máy chủ đấu trường.' : 'Kết nối gián đoạn.')}</p>
+        {connectionStatus !== 'connecting' && <p className="mt-1 text-xs">Trạng thái trận vẫn được giữ; ứng dụng sẽ tự đồng bộ lại khi kết nối hồi phục.</p>}
+      </div>
       {connectionStatus !== 'connecting' && <button type="button" onClick={connectWs} className="rounded-lg bg-amber-200 px-3 py-1.5 font-bold hover:bg-amber-300">Thử kết nối lại</button>}
     </div>
   ) : null;

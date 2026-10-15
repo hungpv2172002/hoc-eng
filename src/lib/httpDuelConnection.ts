@@ -18,6 +18,7 @@ export class HttpDuelConnection {
   private lastCountdown: number | null = null;
   private controller: AbortController | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private hasConnectionError = false;
   private readonly fetcher: typeof fetch;
   private readonly retryBaseMs: number;
 
@@ -64,28 +65,51 @@ export class HttpDuelConnection {
         clearTimeout(timeout);
         this.controller = null;
       }
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        const message = `API đấu trả HTTP ${response.status} nhưng không có phản hồi JSON. Hãy kiểm tra route /api/duel/sync trên Vercel.`;
+        this.hasConnectionError = true;
+        this.emit({ type: 'error', message, connectionFailure: true });
+        this.failures++;
+        this.onerror?.();
+        return;
+      }
       if (!response.ok) {
         if (response.status === 400 && data.error?.includes('Phiên đấu đã hết hạn')) {
           this.registered = false;
           return;
         }
-        this.emit({ type: 'error', message: data.error || 'Không kết nối được máy chủ đấu.' });
-        if (response.status === 401 || response.status === 403 || response.status === 400) {
+        const message = data.error || `Máy chủ đấu trả về lỗi HTTP ${response.status}.`;
+        const terminal = response.status === 401 || response.status === 403 ||
+          (response.status === 400 && command.type === 'register_lobby');
+        const connectionFailure = terminal || response.status === 404 || response.status >= 500;
+        this.emit({ type: 'error', message, connectionFailure });
+        if (terminal) {
+          this.hasConnectionError = true;
           this.onerror?.();
           this.close();
           return;
         }
-        if (response.status >= 500) {
+        if (connectionFailure) {
+          this.hasConnectionError = true;
           this.failures++;
           this.onerror?.();
+        }
+        if (response.status >= 500) {
           return;
         }
         return;
       }
       const recovered = this.failures > 0;
       this.registered = true; this.failures = 0;
-      if (recovered) this.onrecovered?.();
+      if (recovered || this.hasConnectionError) {
+        this.hasConnectionError = false;
+        this.emit({ type: 'connection_restored' });
+        this.onrecovered?.();
+      }
       this.emit({ type: 'lobby_state', players: data.players || [], invitations: [] });
       for (const event of data.events || []) this.emit(event);
       this.cursor = data.cursor;
@@ -98,8 +122,12 @@ export class HttpDuelConnection {
       }
       const count = data.state?.status === 'countdown' ? Math.max(1, Math.ceil((data.state.roundStartedAt - data.serverNow) / 1000)) : null;
       if (count !== this.lastCountdown) { this.lastCountdown = count; if (count !== null) this.emit({ type: 'countdown_tick', count }); else if (data.state?.status === 'in_progress') this.emit({ type: 'game_started' }); }
-    } catch {
-      this.emit({ type: 'error', message: 'Mạng đang gián đoạn. Đang thử kết nối lại...' });
+    } catch (error: any) {
+      const message = error?.name === 'AbortError'
+        ? 'Máy chủ đấu không phản hồi sau 12 giây.'
+        : 'Mạng đang gián đoạn. Đang thử kết nối lại.';
+      this.hasConnectionError = true;
+      this.emit({ type: 'error', message, connectionFailure: true });
       this.failures++;
       this.onerror?.();
     } finally {
