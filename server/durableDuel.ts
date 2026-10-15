@@ -187,21 +187,36 @@ export function installDurableDuel(app: Express, admin: SupabaseClient | null, q
     try {
       if(cmd.type==='register_lobby') {
         const bearer=req.headers.authorization?.replace(/^Bearer /,'');
-        let user:any=null;
-        if(bearer) { const result=await admin.auth.getUser(bearer); if(result.error) return res.status(401).json({error:'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.'}); user=result.data.user; }
+        if(!bearer) return res.status(401).json({error:'Bạn cần đăng nhập lại để vào đấu trường.'});
+        const {data,error}=await admin.auth.getUser(bearer);
+        if(error || !data.user) return res.status(401).json({error:'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.'});
+        const user=data.user;
+        const {data:profile,error:profileError}=await admin.from('profiles')
+          .select('full_name,email,avatar_url').eq('id',user.id).maybeSingle();
+        if(profileError) return res.status(503).json({error:'Không tải được hồ sơ người chơi. Hãy thử kết nối lại.'});
+        const metadata=user.user_metadata||{};
+        identity={
+          id:user.id,
+          name:profile?.full_name||metadata.full_name||metadata.name||user.email?.split('@')[0]||'Học viên',
+          avatar_url:profile?.avatar_url||metadata.avatar_url,
+          email:user.email||profile?.email,
+        };
       }
       for(let attempt=0;attempt<10;attempt++) {
         const {data:row,error}=await admin.from('duel_state_store').select('version,state').eq('id',1).single();
-        if(error) throw Error('Kho phòng đấu chưa sẵn sàng. Vui lòng thử lại sau.');
+        if(error) return res.status(503).json({error:'Kho đấu 1vs1 chưa được cài đặt. Hãy chạy migration 20261015093000_durable_duel_store.sql trong Supabase.'});
         const db=row.state as DuelStore, now=Date.now();
         transition(db,key,cmd,now,questions(),identity);
         const {data:committed,error:writeError}=await admin.rpc('duel_compare_and_swap',{expected_version:row.version,next_state:db});
-        if(writeError) throw Error('Không lưu được trạng thái trận đấu.');
+        if(writeError) return res.status(503).json({error:'Không lưu được trạng thái trận. Hãy kiểm tra migration và cấu hình Supabase service role.'});
         if(committed) return res.json(snapshot(db,key,Number(cursor)||0,now));
         await new Promise(resolve=>setTimeout(resolve,15+Math.random()*50));
       }
       return res.status(503).json({error:'Máy chủ đang bận. Vui lòng thử lại.'});
-    } catch(error:any) { return res.status(400).json({error:error.message||'Không xử lý được trận đấu.'}); }
+    } catch(error:any) {
+      const message=error.message||'Không xử lý được trận đấu.';
+      return res.status(/duel_state_store|duel_compare_and_swap|schema cache|does not exist/i.test(message)?503:400).json({error:message});
+    }
   });
 }
 

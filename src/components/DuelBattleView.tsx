@@ -186,6 +186,11 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   const [connectionStatus, setConnectionStatus] = useState<
     'connecting' | 'connected' | 'disconnected' | 'error'
   >('connecting');
+  const connectionStatusRef = useRef(connectionStatus);
+  const updateConnectionStatus = (status: typeof connectionStatus) => {
+    connectionStatusRef.current = status;
+    setConnectionStatus(status);
+  };
 
   // 3. Trạng thái phòng & Trận đấu
   const [roomState, setRoomState] = useState<DuelRoomState | null>(null);
@@ -243,20 +248,23 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
     try {
       wsRef.current?.close();
       if (!profile?.id) return;
-      setConnectionStatus('connecting');
+      updateConnectionStatus('connecting');
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = (import.meta as any).env.VITE_DUEL_WS_URL || `${protocol}//${window.location.host}/ws/duel`;
       const connection: any = (import.meta as any).env.VITE_DUEL_WS_URL ? new WebSocket(wsUrl) : new HttpDuelConnection(playerId);
       connection.onopen = () => {
-        setConnectionStatus('connected');
+        updateConnectionStatus('connected');
         connection.send(JSON.stringify({ type: 'register_lobby', player: { id: playerId, name: playerName, avatar_url: playerAvatar, email: profile?.email } }));
         if (initialRoomId) connection.send(JSON.stringify({ type: 'join_room', roomId: initialRoomId.toUpperCase().trim(), player: { id: playerId, name: playerName, avatar_url: playerAvatar } }));
       };
       connection.onmessage = (event: any) => { try { messageRef.current(JSON.parse(event.data)); } catch {} };
-      connection.onclose = () => { if (wsRef.current === connection) { setConnectionStatus('disconnected'); setIsSearchingMatch(false); setRoomState(null); setCountdown(null); } };
-      connection.onerror = () => { if (wsRef.current === connection) setConnectionStatus('error'); };
+      connection.onrecovered = () => { if (wsRef.current === connection) updateConnectionStatus('connected'); };
+      connection.onclose = () => {
+        if (wsRef.current === connection && connectionStatusRef.current !== 'error') updateConnectionStatus('disconnected');
+      };
+      connection.onerror = () => { if (wsRef.current === connection) updateConnectionStatus('error'); };
       wsRef.current = connection;
-    } catch { setConnectionStatus('error'); }
+    } catch { updateConnectionStatus('error'); }
   }, [initialRoomId, playerId, playerName, playerAvatar, profile?.email]);
 
   // Xử lý các sự kiện từ Server
@@ -704,8 +712,9 @@ export const DuelBattleView: React.FC<DuelBattleViewProps> = ({
   );
 
   const connectionNotice = connectionStatus !== 'connected' ? (
-    <div role="status" className="rounded-xl p-3 bg-amber-100 text-amber-950 text-sm">
-      {connectionStatus === 'connecting' ? 'Đang kết nối...' : 'Kết nối gián đoạn. Đang thử lại; giữ trang mở để khôi phục trận.'}
+    <div role="status" className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-100 p-3 text-sm text-amber-950">
+      <span>{connectionStatus === 'connecting' ? 'Đang kết nối...' : connectionStatus === 'error' ? 'Chưa kết nối được. Trạng thái trận vẫn được giữ để đồng bộ lại.' : 'Kết nối gián đoạn. Đang tự thử lại; hãy giữ trang mở để khôi phục trận.'}</span>
+      {connectionStatus !== 'connecting' && <button type="button" onClick={connectWs} className="rounded-lg bg-amber-200 px-3 py-1.5 font-bold hover:bg-amber-300">Thử kết nối lại</button>}
     </div>
   ) : null;
 
